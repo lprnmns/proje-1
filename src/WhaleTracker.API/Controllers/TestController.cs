@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
+using System.IO;
 using System.Text.RegularExpressions;
 using WhaleTracker.Core.Interfaces;
 using WhaleTracker.Core.Models;
@@ -16,15 +18,18 @@ public class TestController : ControllerBase
     private readonly IOkxService _okxService;
     private readonly IAIService _aiService;
     private readonly ILogger<TestController> _logger;
+    private readonly IWebHostEnvironment _env;
 
     public TestController(
         IOkxService okxService,
         IAIService aiService,
-        ILogger<TestController> logger)
+        ILogger<TestController> logger,
+        IWebHostEnvironment env)
     {
         _okxService = okxService;
         _aiService = aiService;
         _logger = logger;
+        _env = env;
     }
 
     // ================================================================
@@ -1860,24 +1865,26 @@ public class TestController : ControllerBase
 
         _logger.LogWarning("MEGA TEST baþlýyor. TAMAMEN LIVE emir gönderilecek!");
 
-        if (!System.IO.File.Exists(file))
+        var resolvedPath = ResolveHistoryFilePath(file);
+
+        if (!System.IO.File.Exists(resolvedPath))
         {
             return Ok(new
             {
                 Title = "WHALE HISTORY REPLAY",
                 Status = "ERROR",
-                Error = $"Dosya bulunamadý: {file}"
+                Error = $"Dosya bulunamadý: {resolvedPath}"
             });
         }
 
-        var rawText = System.IO.File.ReadAllText(file);
+        var rawText = System.IO.File.ReadAllText(resolvedPath);
         var blocks = ExtractEventBlocks(rawText).ToList();
 
         results.Add(new
         {
             Stage = "0 - LOADED",
             Timestamp = DateTime.Now.ToString("HH:mm:ss.fff"),
-            File = file,
+            File = resolvedPath,
             TotalBlocks = blocks.Count
         });
 
@@ -2059,11 +2066,37 @@ public class TestController : ControllerBase
             yield return block;
         }
     }
+    private string ResolveHistoryFilePath(string file)
+    {
+        if (Path.IsPathRooted(file))
+        {
+            return file;
+        }
+
+        var candidates = new[]
+        {
+            Path.Combine(_env.ContentRootPath, file),
+            Path.Combine(_env.ContentRootPath, "..", "..", file),
+            Path.Combine(Directory.GetCurrentDirectory(), file)
+        };
+
+        foreach (var candidate in candidates)
+        {
+            var full = Path.GetFullPath(candidate);
+            if (System.IO.File.Exists(full))
+            {
+                return full;
+            }
+        }
+
+        return Path.GetFullPath(Path.Combine(_env.ContentRootPath, file));
+    }
 }
 public class AITestRequest
 {
     public WhaleMovement? Movement { get; set; }
     public decimal? WhaleBalance { get; set; }
 }
+
 
 
