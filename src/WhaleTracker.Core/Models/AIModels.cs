@@ -11,7 +11,7 @@ public class AIDecision
     public bool ShouldTrade { get; set; }
 
     /// <summary>
-    /// İşlem tipi: LONG, SHORT, IGNORE
+    /// İşlem tipi: LONG, CLOSE_LONG, IGNORE
     /// </summary>
     public string Action { get; set; } = "IGNORE";
 

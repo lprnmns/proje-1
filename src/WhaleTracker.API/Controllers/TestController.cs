@@ -1470,7 +1470,7 @@ public class TestController : ControllerBase
                         Error = tradeResult.ErrorMessage
                     });
                 }
-                else if (decision.Action == "SHORT")
+                else if (decision.Action == "CLOSE_LONG" || decision.Action == "SHORT")
                 {
                     // SHORT = Mevcut LONG pozisyonu kapat
                     _logger.LogInformation("ğŸ“‰ SHORT sinyali: {Symbol} pozisyonu kapatÄ±lÄ±yor", decision.Symbol);
@@ -1681,6 +1681,7 @@ public class TestController : ControllerBase
                 var mappedAction = decision.Action.ToUpperInvariant() switch
                 {
                     "LONG" => TradeAction.OPEN_LONG,
+                    "CLOSE_LONG" => TradeAction.CLOSE_LONG,
                     "SHORT" => TradeAction.CLOSE_LONG,
                     _ => TradeAction.IGNORE
                 };

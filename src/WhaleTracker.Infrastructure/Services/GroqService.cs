@@ -99,7 +99,7 @@ public class GroqService : IAIService
         // System context
         sb.AppendLine("Sen bir kripto copy-trading botusun. Bir balina cüzdanının hareketlerini BİREBİR kopyalıyoruz.");
         sb.AppendLine("Balina bir coin aldığında biz de OKX Futures'ta LONG açıyoruz.");
-        sb.AppendLine("Balina bir coin sattığında biz de mevcut LONG pozisyonumuzu kapatıyoruz (SHORT sinyali).");
+        sb.AppendLine("Balina bir coin sattığında biz de mevcut LONG pozisyonumuzu kapatıyoruz (CLOSE_LONG sinyali).");
         sb.AppendLine("AMAÇ: Balinayı TAMAMEN kopyalamak. Aynı oran, aynı token.");
         sb.AppendLine();
 
@@ -146,7 +146,7 @@ public class GroqService : IAIService
         sb.AppendLine("Aşağıdaki formatta SADECE JSON döndür:");
         sb.AppendLine();
         sb.AppendLine(@"{
-  ""action"": ""LONG"" veya ""SHORT"" veya ""IGNORE"",
+  ""action"": ""LONG"" veya ""CLOSE_LONG"" veya ""IGNORE"",
   ""symbol"": ""TOKEN_SEMBOLU"",
   ""amount_usdt"": SAYI,
   ""reasoning"": ""Kısa açıklama""
@@ -154,7 +154,7 @@ public class GroqService : IAIService
         sb.AppendLine();
         sb.AppendLine("KURALLAR:");
         sb.AppendLine("1. Balina BUY yaptıysa -> LONG aç (aynı token)");
-        sb.AppendLine("2. Balina SELL yaptıysa -> SHORT (mevcut LONG pozisyonu kapat)");
+        sb.AppendLine("2. Balina SELL yaptıysa -> CLOSE_LONG (mevcut LONG pozisyonu kapat)");
         sb.AppendLine($"3. amount_usdt = ${ourAmount:F2} (balina ile AYNI ORAN)");
         sb.AppendLine("4. leverage ve confidence YAZMA, biz sabit 3x kullanıyoruz");
         sb.AppendLine("5. SADECE JSON döndür, başka bir şey yazma!");
@@ -199,7 +199,16 @@ public class GroqService : IAIService
             }
 
             // Map to AIDecision
-            decision.Action = parsed.Action?.ToUpper() ?? "IGNORE";
+            var action = parsed.Action?.Trim().ToUpperInvariant() ?? "IGNORE";
+            action = action switch
+            {
+                "SHORT" => "CLOSE_LONG",
+                "SELL" => "CLOSE_LONG",
+                "CLOSE" => "CLOSE_LONG",
+                _ => action
+            };
+
+            decision.Action = action;
             decision.Symbol = parsed.Symbol?.ToUpper() ?? "";
             decision.AmountUSDT = parsed.AmountUsdt;
             decision.Leverage = 3;  // SABİT 3x KALDIRAÇ
@@ -208,7 +217,7 @@ public class GroqService : IAIService
             decision.ParseSuccess = true;
 
             // Validasyon
-            if (decision.Action == "LONG" || decision.Action == "SHORT")
+            if (decision.Action == "LONG" || decision.Action == "CLOSE_LONG")
             {
                 decision.ShouldTrade = true;
 
@@ -218,12 +227,11 @@ public class GroqService : IAIService
                     decision.Action = "IGNORE";
                     decision.Reasoning = "Symbol belirtilmedi";
                 }
-
-                if (decision.AmountUSDT < 2)
+                else if (decision.AmountUSDT <= 0)
                 {
                     decision.ShouldTrade = false;
                     decision.Action = "IGNORE";
-                    decision.Reasoning = $"Miktar çok düşük: ${decision.AmountUSDT}";
+                    decision.Reasoning = "Miktar 0 veya negatif";
                 }
             }
 
