@@ -33,6 +33,13 @@ public class OkxService : IOkxService
     private static readonly TimeSpan _instrumentCacheExpiry = TimeSpan.FromHours(1);
     private static readonly TimeSpan _priceCacheExpiry = TimeSpan.FromSeconds(30);
 
+    // OKX SWAP sembol listesi cache
+    private static readonly HashSet<string> _supportedSymbolsCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly object _supportedSymbolsLock = new();
+    private static readonly TimeSpan _supportedSymbolsCacheExpiry = TimeSpan.FromHours(6);
+    private static DateTime _supportedSymbolsUpdatedAt = DateTime.MinValue;
+    private const string SupportedSymbolsFileName = "data/okx_futures_symbols.json";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -185,6 +192,161 @@ public class OkxService : IOkxService
         }
     }
 
+    // ================================================================
+    // SUPPORTED SYMBOLS
+    // ================================================================
+
+    public async Task<IReadOnlyCollection<string>> GetSupportedSymbolsAsync(bool forceRefresh = false)
+    {
+        lock (_supportedSymbolsLock)
+        {
+            if (!forceRefresh &&
+                _supportedSymbolsCache.Count > 0 &&
+                DateTime.UtcNow - _supportedSymbolsUpdatedAt < _supportedSymbolsCacheExpiry)
+            {
+                return _supportedSymbolsCache.ToList();
+            }
+        }
+
+        if (!forceRefresh && TryLoadSupportedSymbolsFromFile(out var fileSymbols))
+        {
+            lock (_supportedSymbolsLock)
+            {
+                _supportedSymbolsCache.Clear();
+                foreach (var symbol in fileSymbols)
+                {
+                    _supportedSymbolsCache.Add(symbol);
+                }
+                _supportedSymbolsUpdatedAt = DateTime.UtcNow;
+            }
+
+            return fileSymbols.ToList();
+        }
+
+        return await RefreshSupportedSymbolsAsync();
+    }
+
+    public async Task<bool> IsSymbolSupportedAsync(string symbol, bool forceRefresh = false)
+    {
+        if (string.IsNullOrWhiteSpace(symbol))
+        {
+            return false;
+        }
+
+        var list = await GetSupportedSymbolsAsync(forceRefresh);
+        return list.Contains(symbol.ToUpperInvariant());
+    }
+
+    private async Task<IReadOnlyCollection<string>> RefreshSupportedSymbolsAsync()
+    {
+        try
+        {
+            var response = await SendGetRequestAsync<OkxInstrumentResponse>(
+                "/api/v5/public/instruments?instType=SWAP");
+
+            if (response?.Code != "0" || response.Data == null)
+            {
+                _logger.LogWarning("Supported symbols alınamadı: {Code} - {Msg}",
+                    response?.Code, response?.Msg);
+                lock (_supportedSymbolsLock)
+                {
+                    return _supportedSymbolsCache.ToList();
+                }
+            }
+
+            var symbols = response.Data
+                .Select(d => d.InstId?.Split('-')[0])
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s!.ToUpperInvariant())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            lock (_supportedSymbolsLock)
+            {
+                _supportedSymbolsCache.Clear();
+                foreach (var symbol in symbols)
+                {
+                    _supportedSymbolsCache.Add(symbol);
+                }
+                _supportedSymbolsUpdatedAt = DateTime.UtcNow;
+            }
+
+            TrySaveSupportedSymbolsToFile(symbols);
+
+            _logger.LogInformation("Supported symbols güncellendi. Toplam: {Count}", symbols.Count);
+            return symbols;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Supported symbols güncellenemedi");
+            lock (_supportedSymbolsLock)
+            {
+                return _supportedSymbolsCache.ToList();
+            }
+        }
+    }
+
+    private static bool TryLoadSupportedSymbolsFromFile(out HashSet<string> symbols)
+    {
+        symbols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            var path = GetSupportedSymbolsFilePath();
+            if (!File.Exists(path))
+            {
+                return false;
+            }
+
+            var json = File.ReadAllText(path);
+            var list = JsonSerializer.Deserialize<List<string>>(json, JsonOptions) ?? new List<string>();
+
+            foreach (var symbol in list)
+            {
+                if (!string.IsNullOrWhiteSpace(symbol))
+                {
+                    symbols.Add(symbol.ToUpperInvariant());
+                }
+            }
+
+            return symbols.Count > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void TrySaveSupportedSymbolsToFile(List<string> symbols)
+    {
+        try
+        {
+            var path = GetSupportedSymbolsFilePath();
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            var json = JsonSerializer.Serialize(symbols, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
+            File.WriteAllText(path, json);
+        }
+        catch
+        {
+            // Dosya yazımı kritik değil, sessiz geç
+        }
+    }
+
+    private static string GetSupportedSymbolsFilePath()
+    {
+        var root = Directory.GetCurrentDirectory();
+        return Path.Combine(root, SupportedSymbolsFileName);
+    }
+
     private Position? MapToPosition(OkxPositionData pos)
     {
         // InstId'den sembol çıkar: ETH-USDT-SWAP -> ETH
@@ -253,6 +415,17 @@ public class OkxService : IOkxService
 
         try
         {
+            if (signal.Action == TradeAction.OPEN_SHORT || signal.Action == TradeAction.CLOSE_SHORT)
+            {
+                _logger.LogWarning("SHORT işlemleri devre dışı: {Action} {Symbol}", signal.Action, signal.Symbol);
+                return new TradeResult
+                {
+                    Success = false,
+                    Symbol = signal.Symbol,
+                    ErrorMessage = "SHORT işlemleri devre dışı"
+                };
+            }
+
             // ================================================================
             // SENARYO 1: POZİSYON AÇMA / EKLEME (Fire and Forget)
             // ================================================================

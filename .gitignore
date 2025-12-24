@@ -6,3 +6,4 @@
 .env
 **/appsettings.Development.json
 **/appsettings.Local.json
+data/okx_futures_symbols.json

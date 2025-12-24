@@ -74,6 +74,20 @@ public interface IOkxService
     Task<bool> SetLeverageAsync(string symbol, int leverage);
 
     // ================================================================
+    // SUPPORTED SYMBOLS
+    // ================================================================
+
+    /// <summary>
+    /// OKX SWAP enstrümanlarını çeker (cache'li)
+    /// </summary>
+    Task<IReadOnlyCollection<string>> GetSupportedSymbolsAsync(bool forceRefresh = false);
+
+    /// <summary>
+    /// Sembol OKX SWAP listesinde var mı?
+    /// </summary>
+    Task<bool> IsSymbolSupportedAsync(string symbol, bool forceRefresh = false);
+
+    // ================================================================
     // DEBUG / UYUMLULUK
     // ================================================================
 

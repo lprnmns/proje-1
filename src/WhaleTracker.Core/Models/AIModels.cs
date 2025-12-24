@@ -106,7 +106,7 @@ public class OurPosition : PositionSummary { }
 public class WhaleMovement
 {
     /// <summary>
-    /// İşlem tipi: BUY, SELL, TRANSFER_IN, TRANSFER_OUT
+    /// İşlem tipi: BUY, SELL, TRADE, DEPOSIT, RECEIVE, SEND, APPROVE, EXECUTE
     /// </summary>
     public string Type { get; set; } = string.Empty;
 
@@ -129,6 +129,51 @@ public class WhaleMovement
     /// Token fiyatı
     /// </summary>
     public decimal Price { get; set; }
+
+    /// <summary>
+    /// Zincir adı (Ethereum, Avalanche, vb.)
+    /// </summary>
+    public string Chain { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Ham olay metni (AI parse edecekse)
+    /// </summary>
+    public string RawText { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Trade olaylarında çıkan token (ham)
+    /// </summary>
+    public string FromToken { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Trade olaylarında çıkan miktar
+    /// </summary>
+    public decimal FromAmount { get; set; }
+
+    /// <summary>
+    /// Trade olaylarında çıkan USD değeri
+    /// </summary>
+    public decimal FromValueUSDT { get; set; }
+
+    /// <summary>
+    /// Trade olaylarında giren token (ham)
+    /// </summary>
+    public string ToToken { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Trade olaylarında giren miktar
+    /// </summary>
+    public decimal ToAmount { get; set; }
+
+    /// <summary>
+    /// Trade olaylarında giren USD değeri
+    /// </summary>
+    public decimal ToValueUSDT { get; set; }
+
+    /// <summary>
+    /// Kaynak/uygulama bilgisi
+    /// </summary>
+    public string Source { get; set; } = string.Empty;
 
     /// <summary>
     /// İşlem hash'i

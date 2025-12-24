@@ -1,0 +1,18 @@
+# Whale history raw text (paste full history here)
+# Each movement should be separated by a blank line.
+# Date headers (e.g. "December 21, 2025") are allowed; they will be ignored.
+
+# Example block:
+# Ethereum
+# Trade
+# 11:32 AM
+# WETH icon
+# -10.652
+# WETH
+# $31,765.43
+# USDT icon
+# +31,889.331
+# USDT
+# $31,872.58
+# From
+# 0x9008...ab41

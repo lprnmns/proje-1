@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
+using System.Text.RegularExpressions;
 using WhaleTracker.Core.Interfaces;
 using WhaleTracker.Core.Models;
 
@@ -6,7 +7,7 @@ namespace WhaleTracker.API.Controllers;
 
 /// <summary>
 /// Test Controller
-/// API baÄŸlantÄ±larÄ±nÄ± test etmek iÃ§in
+/// API bağlantılarını test etmek için
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -27,11 +28,11 @@ public class TestController : ControllerBase
     }
 
     // ================================================================
-    // KAPSAMLI TEST - TÃœM METODLARI TEST ET
+    // KAPSAMLI TEST - TÜM METODLARI TEST ET
     // ================================================================
 
     /// <summary>
-    /// ğŸ§ª KAPSAMLI TEST - TÃ¼m OKX metodlarÄ±nÄ± test et
+    /// 🧪 KAPSAMLI TEST - Tüm OKX metodlarını test et
     /// GET /api/test/comprehensive
     /// </summary>
     [HttpGet("comprehensive")]
@@ -40,20 +41,20 @@ public class TestController : ControllerBase
         var results = new List<object>();
         var startTime = DateTime.Now;
 
-        _logger.LogInformation("ğŸ§ª KAPSAMLI TEST BAÅLIYOR...");
+        _logger.LogInformation("🧪 KAPSAMLI TEST BAŞLIYOR...");
 
         // ================================================================
         // TEST 1: Hesap Bilgisi
         // ================================================================
         try
         {
-            _logger.LogInformation("ğŸ“Š TEST 1: GetAccountInfoAsync");
+            _logger.LogInformation("📊 TEST 1: GetAccountInfoAsync");
             var userStats = await _okxService.GetAccountInfoAsync();
             
             results.Add(new
             {
                 Test = "1. GetAccountInfoAsync",
-                Status = "âœ… BAÅARILI",
+                Status = "✅ BAŞARILI",
                 Data = new
                 {
                     TotalBalanceUSD = userStats.TotalUsd,
@@ -64,22 +65,22 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            results.Add(new { Test = "1. GetAccountInfoAsync", Status = "âŒ HATA", Error = ex.Message });
+            results.Add(new { Test = "1. GetAccountInfoAsync", Status = "❌ HATA", Error = ex.Message });
         }
 
         // ================================================================
-        // TEST 2: TÃ¼m Pozisyonlar
+        // TEST 2: Tüm Pozisyonlar
         // ================================================================
         List<Position> allPositions = new();
         try
         {
-            _logger.LogInformation("ğŸ“Š TEST 2: GetAllPositionsAsync");
+            _logger.LogInformation("📊 TEST 2: GetAllPositionsAsync");
             allPositions = await _okxService.GetAllPositionsAsync();
             
             results.Add(new
             {
                 Test = "2. GetAllPositionsAsync",
-                Status = "âœ… BAÅARILI",
+                Status = "✅ BAŞARILI",
                 PositionCount = allPositions.Count,
                 Positions = allPositions.Select(p => new
                 {
@@ -94,24 +95,24 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            results.Add(new { Test = "2. GetAllPositionsAsync", Status = "âŒ HATA", Error = ex.Message });
+            results.Add(new { Test = "2. GetAllPositionsAsync", Status = "❌ HATA", Error = ex.Message });
         }
 
         // ================================================================
-        // TEST 3: BABY Pozisyonu (Long ve Short ayrÄ± ayrÄ±)
+        // TEST 3: BABY Pozisyonu (Long ve Short ayrı ayrı)
         // ================================================================
         try
         {
-            _logger.LogInformation("ğŸ“Š TEST 3: GetPositionAsync(BABY)");
+            _logger.LogInformation("📊 TEST 3: GetPositionAsync(BABY)");
             var babyPosition = await _okxService.GetPositionAsync("BABY");
             
-            // PozisyonlarÄ± direction'a gÃ¶re grupla
+            // Pozisyonları direction'a göre grupla
             var babyPositions = allPositions.Where(p => p.Symbol == "BABY").ToList();
             
             results.Add(new
             {
                 Test = "3. GetPositionAsync(BABY)",
-                Status = babyPosition != null ? "âœ… BAÅARILI" : "âš ï¸ POZÄ°SYON YOK",
+                Status = babyPosition != null ? "✅ BAŞARILI" : "⚠️ POZİSYON YOK",
                 FirstPosition = babyPosition != null ? new
                 {
                     babyPosition.Symbol,
@@ -131,35 +132,35 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            results.Add(new { Test = "3. GetPositionAsync(BABY)", Status = "âŒ HATA", Error = ex.Message });
+            results.Add(new { Test = "3. GetPositionAsync(BABY)", Status = "❌ HATA", Error = ex.Message });
         }
 
         // ================================================================
-        // TEST 4: KaldÄ±raÃ§ Ayarlama (DOGE iÃ§in test - kÃ¼Ã§Ã¼k coin)
+        // TEST 4: Kaldıraç Ayarlama (DOGE için test - küçük coin)
         // ================================================================
         try
         {
-            _logger.LogInformation("ğŸ“Š TEST 4: SetLeverageAsync(DOGE, 5)");
+            _logger.LogInformation("📊 TEST 4: SetLeverageAsync(DOGE, 5)");
             var leverageResult = await _okxService.SetLeverageAsync("DOGE", 5);
             
             results.Add(new
             {
                 Test = "4. SetLeverageAsync(DOGE, 5x)",
-                Status = leverageResult ? "âœ… BAÅARILI" : "âš ï¸ UYARI",
-                Message = leverageResult ? "DOGE kaldÄ±racÄ± 5x olarak ayarlandÄ±" : "KaldÄ±raÃ§ ayarlanamadÄ±"
+                Status = leverageResult ? "✅ BAŞARILI" : "⚠️ UYARI",
+                Message = leverageResult ? "DOGE kaldıracı 5x olarak ayarlandı" : "Kaldıraç ayarlanamadı"
             });
         }
         catch (Exception ex)
         {
-            results.Add(new { Test = "4. SetLeverageAsync", Status = "âŒ HATA", Error = ex.Message });
+            results.Add(new { Test = "4. SetLeverageAsync", Status = "❌ HATA", Error = ex.Message });
         }
 
         // ================================================================
-        // TEST 5: Pozisyon Ã–zeti (Long vs Short analizi)
+        // TEST 5: Pozisyon Özeti (Long vs Short analizi)
         // ================================================================
         try
         {
-            _logger.LogInformation("ğŸ“Š TEST 5: Pozisyon Analizi");
+            _logger.LogInformation("📊 TEST 5: Pozisyon Analizi");
             
             var longPositions = allPositions.Where(p => p.Direction == "Long").ToList();
             var shortPositions = allPositions.Where(p => p.Direction == "Short").ToList();
@@ -167,7 +168,7 @@ public class TestController : ControllerBase
             results.Add(new
             {
                 Test = "5. Pozisyon Analizi",
-                Status = "âœ… BAÅARILI",
+                Status = "✅ BAŞARILI",
                 Summary = new
                 {
                     TotalPositions = allPositions.Count,
@@ -184,14 +185,14 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            results.Add(new { Test = "5. Pozisyon Analizi", Status = "âŒ HATA", Error = ex.Message });
+            results.Add(new { Test = "5. Pozisyon Analizi", Status = "❌ HATA", Error = ex.Message });
         }
 
         var totalTime = (DateTime.Now - startTime).TotalMilliseconds;
 
         return Ok(new
         {
-            Title = "ğŸ‹ WhaleTracker KapsamlÄ± Test SonuÃ§larÄ±",
+            Title = "🐋 WhaleTracker Kapsamlı Test Sonuçları",
             Timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
             TotalDurationMs = Math.Round(totalTime, 0),
             TestCount = results.Count,
@@ -200,11 +201,11 @@ public class TestController : ControllerBase
     }
 
     // ================================================================
-    // DEBUG: KONTRAT HESAPLAMA TESTÄ°
+    // DEBUG: KONTRAT HESAPLAMA TESTİ
     // ================================================================
 
     /// <summary>
-    /// ğŸ”§ DEBUG: USDT -> Kontrat dÃ¶nÃ¼ÅŸÃ¼mÃ¼nÃ¼ test et
+    /// 🔧 DEBUG: USDT -> Kontrat dönüşümünü test et
     /// GET /api/test/debug/contracts?symbol=DOGE&usdt=2&leverage=3
     /// </summary>
     [HttpGet("debug/contracts")]
@@ -213,39 +214,39 @@ public class TestController : ControllerBase
         [FromQuery] decimal usdt = 2,
         [FromQuery] int leverage = 3)
     {
-        _logger.LogInformation("ğŸ”§ DEBUG: Kontrat hesaplama - {Symbol} {USDT} USDT {Leverage}x", 
+        _logger.LogInformation("🔧 DEBUG: Kontrat hesaplama - {Symbol} {USDT} USDT {Leverage}x", 
             symbol, usdt, leverage);
 
         try
         {
             var (contracts, ctVal, price, notional, minSz, lotSz) = await _okxService.ConvertToContractsDebugAsync(symbol, usdt, leverage);
             
-            // 1 TAM kontratÄ±n USD deÄŸeri
+            // 1 TAM kontratın USD değeri
             var oneFullContractUsd = ctVal * price;
-            // Minimum kontratÄ±n USD deÄŸeri (0.01 kontrat gibi)
+            // Minimum kontratın USD değeri (0.01 kontrat gibi)
             var minContractUsd = minSz * oneFullContractUsd;
-            // Minimum margin gerekli (minSz kontrat iÃ§in)
+            // Minimum margin gerekli (minSz kontrat için)
             var minMarginRequired = minContractUsd / leverage;
-            // AÃ§Ä±lacak kontratÄ±n USD deÄŸeri
+            // Açılacak kontratın USD değeri
             var positionValueUsd = contracts * oneFullContractUsd;
-            // GerÃ§ek margin
+            // Gerçek margin
             var actualMarginUsd = positionValueUsd / leverage;
-            // AÃ§Ä±lacak coin miktarÄ±
+            // Açılacak coin miktarı
             var coinAmount = contracts * ctVal;
             
             // Durum belirleme
             string status;
             var marginDiff = Math.Abs(actualMarginUsd - usdt);
             if (marginDiff <= usdt * 0.5m)
-                status = "âœ… UYGUN - Margin doÄŸru hesaplandÄ±";
+                status = "✅ UYGUN - Margin doğru hesaplandı";
             else if (usdt >= minMarginRequired / 2)
-                status = $"âš ï¸ UYARI - Minimum {minSz} kontrat aÃ§Ä±lacak ({Math.Round(actualMarginUsd, 4)} USDT margin)";
+                status = $"⚠️ UYARI - Minimum {minSz} kontrat açılacak ({Math.Round(actualMarginUsd, 4)} USDT margin)";
             else
-                status = $"âŒ REDDEDÄ°LECEK - Minimum {Math.Round(minMarginRequired, 4)} USDT margin gerekli";
+                status = $"❌ REDDEDİLECEK - Minimum {Math.Round(minMarginRequired, 4)} USDT margin gerekli";
 
             return Ok(new
             {
-                Title = "ğŸ”§ Kontrat Hesaplama Debug (minSz/lotSz ile)",
+                Title = "🔧 Kontrat Hesaplama Debug (minSz/lotSz ile)",
                 Input = new
                 {
                     Symbol = symbol,
@@ -259,7 +260,7 @@ public class TestController : ControllerBase
                     MinSz = minSz,
                     MinSz_Aciklama = $"Minimum emir = {minSz} kontrat = {minSz * ctVal} {symbol}",
                     LotSz = lotSz,
-                    LotSz_Aciklama = $"ArtÄ±ÅŸ miktarÄ± = {lotSz} kontrat",
+                    LotSz_Aciklama = $"Artış miktarı = {lotSz} kontrat",
                     CurrentPrice = price,
                     OneFullContract_USD = Math.Round(oneFullContractUsd, 2),
                     MinContract_USD = Math.Round(minContractUsd, 4),
@@ -287,24 +288,24 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Debug hatasÄ±!");
+            _logger.LogError(ex, "Debug hatası!");
             return StatusCode(500, new { Error = ex.Message });
         }
     }
 
     // ================================================================
-    // ğŸ—ï¸ YENÄ° MÄ°MARÄ° - ORDER CALCULATION
+    // 🏗️ YENİ MİMARİ - ORDER CALCULATION
     // ================================================================
 
     /// <summary>
-    /// ğŸ¯ ORDER CALCULATION - AI sinyali iÃ§in tam hesaplama
+    /// 🎯 ORDER CALCULATION - AI sinyali için tam hesaplama
     /// GET /api/test/calculate-order?symbol=ETH&usdt=20&leverage=5&action=long
     /// 
-    /// Bu endpoint iÅŸlem yapmadan Ã¶nce tÃ¼m hesaplamalarÄ± yapar:
-    /// - Minimum kontrat kontrolÃ¼
-    /// - lotSz'ye gÃ¶re yuvarlama
-    /// - GerÃ§ek margin hesabÄ±
-    /// - TÃ¼m validasyonlar
+    /// Bu endpoint işlem yapmadan önce tüm hesaplamaları yapar:
+    /// - Minimum kontrat kontrolü
+    /// - lotSz'ye göre yuvarlama
+    /// - Gerçek margin hesabı
+    /// - Tüm validasyonlar
     /// </summary>
     [HttpGet("calculate-order")]
     public async Task<IActionResult> CalculateOrder(
@@ -313,7 +314,7 @@ public class TestController : ControllerBase
         [FromQuery] int leverage = 5,
         [FromQuery] string action = "long")
     {
-        _logger.LogInformation("ğŸ¯ ORDER CALCULATION: {Symbol} {USDT} USDT {Leverage}x {Action}", 
+        _logger.LogInformation("🎯 ORDER CALCULATION: {Symbol} {USDT} USDT {Leverage}x {Action}", 
             symbol, usdt, leverage, action);
 
         try
@@ -323,19 +324,19 @@ public class TestController : ControllerBase
             // Status emoji belirleme
             var statusEmoji = calculation.ValidationStatus switch
             {
-                OrderValidationStatus.Valid => "âœ…",
-                OrderValidationStatus.ValidWithWarning => "âš ï¸",
-                OrderValidationStatus.InsufficientMargin => "ğŸ’°",
-                OrderValidationStatus.LeverageTooHigh => "ğŸ“Š",
-                OrderValidationStatus.InstrumentNotFound => "ğŸ”",
-                OrderValidationStatus.PriceUnavailable => "ğŸ’µ",
-                OrderValidationStatus.Error => "âŒ",
-                _ => "â“"
+                OrderValidationStatus.Valid => "✅",
+                OrderValidationStatus.ValidWithWarning => "⚠️",
+                OrderValidationStatus.InsufficientMargin => "💰",
+                OrderValidationStatus.LeverageTooHigh => "📊",
+                OrderValidationStatus.InstrumentNotFound => "🔍",
+                OrderValidationStatus.PriceUnavailable => "💵",
+                OrderValidationStatus.Error => "❌",
+                _ => "❓"
             };
 
             return Ok(new
             {
-                Title = "ğŸ—ï¸ Order Calculation (Demir Mimari)",
+                Title = "🏗️ Order Calculation (Demir Mimari)",
                 Timestamp = DateTime.Now.ToString("HH:mm:ss"),
                 
                 Request = new
@@ -362,7 +363,7 @@ public class TestController : ControllerBase
                     calculation.Instrument.MinSz,
                     MinSz_Aciklama = $"Minimum = {calculation.Instrument.MinSz} kontrat = {calculation.Instrument.MinCoinAmount} {symbol}",
                     calculation.Instrument.LotSz,
-                    LotSz_Aciklama = $"ArtÄ±ÅŸ = {calculation.Instrument.LotSz} kontrat",
+                    LotSz_Aciklama = $"Artış = {calculation.Instrument.LotSz} kontrat",
                     calculation.Instrument.MaxLeverage,
                     calculation.Instrument.LastPrice,
                     OneFullContractUSD = calculation.Instrument.OneFullContractUsd,
@@ -374,7 +375,7 @@ public class TestController : ControllerBase
                 {
                     calculation.Contracts,
                     calculation.CoinAmount,
-                    CoinAmount_Aciklama = $"{calculation.Contracts} kontrat Ã— {calculation.Instrument?.CtVal} = {calculation.CoinAmount} {symbol}",
+                    CoinAmount_Aciklama = $"{calculation.Contracts} kontrat × {calculation.Instrument?.CtVal} = {calculation.CoinAmount} {symbol}",
                     PositionValueUSD = calculation.PositionValueUSD,
                     ActualMarginUSD = calculation.ActualMarginUSD,
                     MarginDifference = calculation.MarginDifference,
@@ -382,25 +383,25 @@ public class TestController : ControllerBase
                 },
                 
                 Summary = calculation.IsValid 
-                    ? $"âœ… Ä°ÅLEM YAPILABÄ°LÄ°R: {calculation.Contracts} kontrat ({calculation.CoinAmount} {symbol}), margin: {calculation.ActualMarginUSD:F4} USDT"
-                    : $"âŒ Ä°ÅLEM YAPILAMAZ: {calculation.ValidationMessage}"
+                    ? $"✅ İŞLEM YAPILABİLİR: {calculation.Contracts} kontrat ({calculation.CoinAmount} {symbol}), margin: {calculation.ActualMarginUSD:F4} USDT"
+                    : $"❌ İŞLEM YAPILAMAZ: {calculation.ValidationMessage}"
             });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Calculate order hatasÄ±!");
+            _logger.LogError(ex, "Calculate order hatası!");
             return StatusCode(500, new { Error = ex.Message, Stack = ex.StackTrace });
         }
     }
 
     /// <summary>
-    /// ğŸ” INSTRUMENT INFO - Coin bilgisini al
+    /// 🔍 INSTRUMENT INFO - Coin bilgisini al
     /// GET /api/test/instrument?symbol=DOGE
     /// </summary>
     [HttpGet("instrument")]
     public async Task<IActionResult> GetInstrumentInfo([FromQuery] string symbol = "DOGE")
     {
-        _logger.LogInformation("ğŸ” Instrument bilgisi: {Symbol}", symbol);
+        _logger.LogInformation("🔍 Instrument bilgisi: {Symbol}", symbol);
 
         try
         {
@@ -408,12 +409,12 @@ public class TestController : ControllerBase
 
             if (info == null)
             {
-                return NotFound(new { Error = $"{symbol} iÃ§in instrument bulunamadÄ±" });
+                return NotFound(new { Error = $"{symbol} için instrument bulunamadı" });
             }
 
             return Ok(new
             {
-                Title = $"ğŸ” {symbol} Instrument Bilgisi",
+                Title = $"🔍 {symbol} Instrument Bilgisi",
                 InstId = info.InstId,
                 Symbol = info.Symbol,
                 
@@ -424,7 +425,7 @@ public class TestController : ControllerBase
                     MinSz = info.MinSz,
                     MinSz_Aciklama = $"Minimum emir = {info.MinSz} kontrat = {info.MinCoinAmount} {symbol}",
                     LotSz = info.LotSz,
-                    LotSz_Aciklama = $"Lot artÄ±ÅŸÄ± = {info.LotSz} kontrat",
+                    LotSz_Aciklama = $"Lot artışı = {info.LotSz} kontrat",
                     TickSz = info.TickSz,
                     MaxLeverage = info.MaxLeverage
                 },
@@ -448,13 +449,13 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Instrument bilgisi hatasÄ±!");
+            _logger.LogError(ex, "Instrument bilgisi hatası!");
             return StatusCode(500, new { Error = ex.Message });
         }
     }
 
     /// <summary>
-    /// ğŸ§ª MULTI-COIN TEST - Birden fazla coin iÃ§in hesaplama
+    /// 🧪 MULTI-COIN TEST - Birden fazla coin için hesaplama
     /// GET /api/test/multi-calculate?usdt=10&leverage=5
     /// </summary>
     [HttpGet("multi-calculate")]
@@ -465,7 +466,7 @@ public class TestController : ControllerBase
         var symbols = new[] { "BTC", "ETH", "SOL", "DOGE", "XRP", "AVAX", "LINK", "PEPE" };
         var results = new List<object>();
 
-        _logger.LogInformation("ğŸ§ª Multi-coin hesaplama: {USDT} USDT, {Leverage}x", usdt, leverage);
+        _logger.LogInformation("🧪 Multi-coin hesaplama: {USDT} USDT, {Leverage}x", usdt, leverage);
 
         foreach (var symbol in symbols)
         {
@@ -475,9 +476,9 @@ public class TestController : ControllerBase
                 
                 var statusEmoji = calc.ValidationStatus switch
                 {
-                    OrderValidationStatus.Valid => "âœ…",
-                    OrderValidationStatus.ValidWithWarning => "âš ï¸",
-                    _ => "âŒ"
+                    OrderValidationStatus.Valid => "✅",
+                    OrderValidationStatus.ValidWithWarning => "⚠️",
+                    _ => "❌"
                 };
 
                 results.Add(new
@@ -499,7 +500,7 @@ public class TestController : ControllerBase
                 results.Add(new
                 {
                     Symbol = symbol,
-                    Status = "âŒ HATA",
+                    Status = "❌ HATA",
                     IsValid = false,
                     Error = ex.Message
                 });
@@ -508,7 +509,7 @@ public class TestController : ControllerBase
 
         return Ok(new
         {
-            Title = "ğŸ§ª Multi-Coin Hesaplama Testi",
+            Title = "🧪 Multi-Coin Hesaplama Testi",
             RequestedMarginUSDT = usdt,
             Leverage = leverage,
             Results = results,
@@ -522,11 +523,11 @@ public class TestController : ControllerBase
     }
 
     // ================================================================
-    // LIVE TRADE TESTLERI (DÄ°KKATLÄ° KULLAN!)
+    // LIVE TRADE TESTLERI (DİKKATLİ KULLAN!)
     // ================================================================
 
     /// <summary>
-    /// ğŸ”¥ LIVE TEST: KÃ¼Ã§Ã¼k bir LONG pozisyon aÃ§
+    /// 🔥 LIVE TEST: Küçük bir LONG pozisyon aç
     /// POST /api/test/live/open-long?symbol=DOGE&usdt=1&leverage=2
     /// </summary>
     [HttpPost("live/open-long")]
@@ -535,7 +536,7 @@ public class TestController : ControllerBase
         [FromQuery] decimal usdt = 1,
         [FromQuery] int leverage = 2)
     {
-        _logger.LogWarning("ğŸ”¥ LIVE TEST: LONG POZÄ°SYON AÃ‡ILIYOR - {Symbol} {USDT} USDT {Leverage}x", 
+        _logger.LogWarning("🔥 LIVE TEST: LONG POZİSYON AÇILIYOR - {Symbol} {USDT} USDT {Leverage}x", 
             symbol, usdt, leverage);
 
         try
@@ -568,13 +569,13 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Live test hatasÄ±!");
+            _logger.LogError(ex, "Live test hatası!");
             return StatusCode(500, new { Error = ex.Message });
         }
     }
 
     /// <summary>
-    /// ğŸ”¥ LIVE TEST: KÃ¼Ã§Ã¼k bir SHORT pozisyon aÃ§
+    /// 🔥 LIVE TEST: Küçük bir SHORT pozisyon aç
     /// POST /api/test/live/open-short?symbol=DOGE&usdt=1&leverage=2
     /// </summary>
     [HttpPost("live/open-short")]
@@ -583,7 +584,7 @@ public class TestController : ControllerBase
         [FromQuery] decimal usdt = 1,
         [FromQuery] int leverage = 2)
     {
-        _logger.LogWarning("ğŸ”¥ LIVE TEST: SHORT POZÄ°SYON AÃ‡ILIYOR - {Symbol} {USDT} USDT {Leverage}x", 
+        _logger.LogWarning("🔥 LIVE TEST: SHORT POZİSYON AÇILIYOR - {Symbol} {USDT} USDT {Leverage}x", 
             symbol, usdt, leverage);
 
         try
@@ -616,22 +617,22 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Live test hatasÄ±!");
+            _logger.LogError(ex, "Live test hatası!");
             return StatusCode(500, new { Error = ex.Message });
         }
     }
 
     /// <summary>
-    /// ğŸ”¥ LIVE TEST: LONG pozisyonu kapat
+    /// 🔥 LIVE TEST: LONG pozisyonu kapat
     /// POST /api/test/live/close-long?symbol=DOGE&usdt=1
-    /// usdt = kapatÄ±lacak miktar (dust threshold'a gÃ¶re tam/kÄ±smi kapanÄ±ÅŸ)
+    /// usdt = kapatılacak miktar (dust threshold'a göre tam/kısmi kapanış)
     /// </summary>
     [HttpPost("live/close-long")]
     public async Task<IActionResult> LiveTestCloseLong(
         [FromQuery] string symbol = "DOGE",
-        [FromQuery] decimal usdt = 100) // YÃ¼ksek deÄŸer = tam kapanÄ±ÅŸ
+        [FromQuery] decimal usdt = 100) // Yüksek değer = tam kapanış
     {
-        _logger.LogWarning("ğŸ”¥ LIVE TEST: LONG POZÄ°SYON KAPATILIYOR - {Symbol} {USDT} USDT", symbol, usdt);
+        _logger.LogWarning("🔥 LIVE TEST: LONG POZİSYON KAPATILIYOR - {Symbol} {USDT} USDT", symbol, usdt);
 
         try
         {
@@ -662,13 +663,13 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Live test hatasÄ±!");
+            _logger.LogError(ex, "Live test hatası!");
             return StatusCode(500, new { Error = ex.Message });
         }
     }
 
     /// <summary>
-    /// ğŸ”¥ LIVE TEST: SHORT pozisyonu kapat
+    /// 🔥 LIVE TEST: SHORT pozisyonu kapat
     /// POST /api/test/live/close-short?symbol=BABY&usdt=100
     /// </summary>
     [HttpPost("live/close-short")]
@@ -676,7 +677,7 @@ public class TestController : ControllerBase
         [FromQuery] string symbol = "BABY",
         [FromQuery] decimal usdt = 100)
     {
-        _logger.LogWarning("ğŸ”¥ LIVE TEST: SHORT POZÄ°SYON KAPATILIYOR - {Symbol} {USDT} USDT", symbol, usdt);
+        _logger.LogWarning("🔥 LIVE TEST: SHORT POZİSYON KAPATILIYOR - {Symbol} {USDT} USDT", symbol, usdt);
 
         try
         {
@@ -707,13 +708,13 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Live test hatasÄ±!");
+            _logger.LogError(ex, "Live test hatası!");
             return StatusCode(500, new { Error = ex.Message });
         }
     }
 
     /// <summary>
-    /// ğŸ”¥ LIVE TEST: Market emri direkt gÃ¶nder
+    /// 🔥 LIVE TEST: Market emri direkt gönder
     /// POST /api/test/live/place-order?symbol=DOGE&side=buy&posSide=long&size=10
     /// </summary>
     [HttpPost("live/place-order")]
@@ -724,7 +725,7 @@ public class TestController : ControllerBase
         [FromQuery] decimal size = 10,
         [FromQuery] bool reduceOnly = false)
     {
-        _logger.LogWarning("ğŸ”¥ LIVE TEST: MARKET EMRÄ° - {Symbol} {Side} {PosSide} {Size} kontrat", 
+        _logger.LogWarning("🔥 LIVE TEST: MARKET EMRİ - {Symbol} {Side} {PosSide} {Size} kontrat", 
             symbol, side, posSide, size);
 
         try
@@ -748,7 +749,7 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Live test hatasÄ±!");
+            _logger.LogError(ex, "Live test hatası!");
             return StatusCode(500, new { Error = ex.Message });
         }
     }
@@ -766,14 +767,14 @@ public class TestController : ControllerBase
     {
         try
         {
-            _logger.LogInformation("OKX hesap testi baÅŸlatÄ±lÄ±yor...");
+            _logger.LogInformation("OKX hesap testi başlatılıyor...");
             
             var userStats = await _okxService.GetAccountInfoAsync();
 
             return Ok(new
             {
                 Success = true,
-                Message = "OKX baÄŸlantÄ±sÄ± baÅŸarÄ±lÄ±!",
+                Message = "OKX bağlantısı başarılı!",
                 Data = new
                 {
                     TotalBalanceUSD = userStats.TotalUsd,
@@ -793,7 +794,7 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "OKX test hatasÄ±!");
+            _logger.LogError(ex, "OKX test hatası!");
             return StatusCode(500, new
             {
                 Success = false,
@@ -804,7 +805,7 @@ public class TestController : ControllerBase
     }
 
     /// <summary>
-    /// Belirli bir coin iÃ§in pozisyon kontrol et
+    /// Belirli bir coin için pozisyon kontrol et
     /// GET /api/test/okx-position/ETH
     /// </summary>
     [HttpGet("okx-position/{symbol}")]
@@ -821,7 +822,7 @@ public class TestController : ControllerBase
                 return Ok(new
                 {
                     Success = true,
-                    Message = $"{symbol} iÃ§in aÃ§Ä±k pozisyon YOK",
+                    Message = $"{symbol} için açık pozisyon YOK",
                     HasPosition = false
                 });
             }
@@ -844,7 +845,7 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "OKX pozisyon test hatasÄ±: {Symbol}", symbol);
+            _logger.LogError(ex, "OKX pozisyon test hatası: {Symbol}", symbol);
             return StatusCode(500, new
             {
                 Success = false,
@@ -854,7 +855,7 @@ public class TestController : ControllerBase
     }
 
     /// <summary>
-    /// TÃ¼m aÃ§Ä±k pozisyonlarÄ± listele
+    /// Tüm açık pozisyonları listele
     /// GET /api/test/okx-positions
     /// </summary>
     [HttpGet("okx-positions")]
@@ -862,7 +863,7 @@ public class TestController : ControllerBase
     {
         try
         {
-            _logger.LogInformation("TÃ¼m OKX pozisyonlarÄ± Ã§ekiliyor...");
+            _logger.LogInformation("Tüm OKX pozisyonları çekiliyor...");
             
             var positions = await _okxService.GetAllPositionsAsync();
 
@@ -883,7 +884,7 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "OKX pozisyonlar test hatasÄ±!");
+            _logger.LogError(ex, "OKX pozisyonlar test hatası!");
             return StatusCode(500, new
             {
                 Success = false,
@@ -893,12 +894,12 @@ public class TestController : ControllerBase
     }
 
     // ================================================================
-    // ğŸ¯ FULL LIVE TEST - TÃœM Ä°ÅLEMLERÄ° SIRALI YAP
+    // 🎯 FULL LIVE TEST - TÜM İŞLEMLERİ SIRALI YAP
     // ================================================================
 
     /// <summary>
-    /// ğŸš€ FULL LIVE TEST
-    /// SÄ±rayla: DOGE Long â†’ DOGE Short â†’ ETH Long â†’ PozisyonlarÄ± GÃ¶ster â†’ Hepsini Kapat
+    /// 🚀 FULL LIVE TEST
+    /// Sırayla: DOGE Long → DOGE Short → ETH Long → Pozisyonları Göster → Hepsini Kapat
     /// POST /api/test/live/full-cycle
     /// </summary>
     [HttpPost("live/full-cycle")]
@@ -907,10 +908,10 @@ public class TestController : ControllerBase
         var testResults = new List<object>();
         var startTime = DateTime.Now;
 
-        _logger.LogInformation("ğŸš€ FULL LIVE CYCLE TEST BAÅLIYOR...");
+        _logger.LogInformation("🚀 FULL LIVE CYCLE TEST BAŞLIYOR...");
 
         // ================================================================
-        // AÅAMA 0: BaÅŸlangÄ±Ã§ Durumu
+        // AŞAMA 0: Başlangıç Durumu
         // ================================================================
         decimal startBalance = 0;
         try
@@ -920,39 +921,39 @@ public class TestController : ControllerBase
             
             testResults.Add(new
             {
-                Step = "0ï¸âƒ£ BAÅLANGIÃ‡ DURUMU",
-                Status = "âœ…",
+                Step = "0️⃣ BAŞLANGIÇ DURUMU",
+                Status = "✅",
                 Balance = $"${startBalance:F2}",
                 OpenPositions = accountInfo.ActivePositions.Count
             });
         }
         catch (Exception ex)
         {
-            testResults.Add(new { Step = "0ï¸âƒ£ BAÅLANGIÃ‡ DURUMU", Status = "âŒ", Error = ex.Message });
+            testResults.Add(new { Step = "0️⃣ BAŞLANGIÇ DURUMU", Status = "❌", Error = ex.Message });
         }
 
-        await Task.Delay(500); // Rate limit iÃ§in bekle
+        await Task.Delay(500); // Rate limit için bekle
 
         // ================================================================
-        // AÅAMA 1: DOGE LONG AÃ‡ (2 USDT, 3x)
+        // AŞAMA 1: DOGE LONG AÇ (2 USDT, 3x)
         // ================================================================
         try
         {
-            _logger.LogInformation("1ï¸âƒ£ DOGE LONG aÃ§Ä±lÄ±yor...");
+            _logger.LogInformation("1️⃣ DOGE LONG açılıyor...");
             
-            // Ã–nce hesapla
+            // Önce hesapla
             var calculation = await _okxService.CalculateOrderAsync("DOGE", 2, 3, "LONG");
             
-            // KaldÄ±raÃ§ ayarla
+            // Kaldıraç ayarla
             await _okxService.SetLeverageAsync("DOGE", 3);
             
-            // Emir gÃ¶nder
+            // Emir gönder
             var result = await _okxService.PlaceMarketOrderAsync("DOGE", "buy", "long", calculation.Contracts);
             
             testResults.Add(new
             {
-                Step = "1ï¸âƒ£ DOGE LONG AÃ‡",
-                Status = result.Success ? "âœ… BAÅARILI" : "âŒ BAÅARISIZ",
+                Step = "1️⃣ DOGE LONG AÇ",
+                Status = result.Success ? "✅ BAŞARILI" : "❌ BAŞARISIZ",
                 OrderId = result.OrderId,
                 Contracts = calculation.Contracts,
                 CoinAmount = $"{calculation.CoinAmount} DOGE",
@@ -963,17 +964,17 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            testResults.Add(new { Step = "1ï¸âƒ£ DOGE LONG AÃ‡", Status = "âŒ HATA", Error = ex.Message });
+            testResults.Add(new { Step = "1️⃣ DOGE LONG AÇ", Status = "❌ HATA", Error = ex.Message });
         }
 
-        await Task.Delay(1000); // Ä°ÅŸlem yerleÅŸmesi iÃ§in bekle
+        await Task.Delay(1000); // İşlem yerleşmesi için bekle
 
         // ================================================================
-        // AÅAMA 2: DOGE SHORT AÃ‡ (2 USDT, 3x) - HEDGE TEST
+        // AŞAMA 2: DOGE SHORT AÇ (2 USDT, 3x) - HEDGE TEST
         // ================================================================
         try
         {
-            _logger.LogInformation("2ï¸âƒ£ DOGE SHORT aÃ§Ä±lÄ±yor (HEDGE)...");
+            _logger.LogInformation("2️⃣ DOGE SHORT açılıyor (HEDGE)...");
             
             var calculation = await _okxService.CalculateOrderAsync("DOGE", 2, 3, "SHORT");
             
@@ -981,8 +982,8 @@ public class TestController : ControllerBase
             
             testResults.Add(new
             {
-                Step = "2ï¸âƒ£ DOGE SHORT AÃ‡ (HEDGE)",
-                Status = result.Success ? "âœ… BAÅARILI" : "âŒ BAÅARISIZ",
+                Step = "2️⃣ DOGE SHORT AÇ (HEDGE)",
+                Status = result.Success ? "✅ BAŞARILI" : "❌ BAŞARISIZ",
                 OrderId = result.OrderId,
                 Contracts = calculation.Contracts,
                 CoinAmount = $"{calculation.CoinAmount} DOGE",
@@ -993,17 +994,17 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            testResults.Add(new { Step = "2ï¸âƒ£ DOGE SHORT AÃ‡", Status = "âŒ HATA", Error = ex.Message });
+            testResults.Add(new { Step = "2️⃣ DOGE SHORT AÇ", Status = "❌ HATA", Error = ex.Message });
         }
 
         await Task.Delay(1000);
 
         // ================================================================
-        // AÅAMA 3: ETH LONG AÃ‡ (5 USDT, 5x)
+        // AŞAMA 3: ETH LONG AÇ (5 USDT, 5x)
         // ================================================================
         try
         {
-            _logger.LogInformation("3ï¸âƒ£ ETH LONG aÃ§Ä±lÄ±yor...");
+            _logger.LogInformation("3️⃣ ETH LONG açılıyor...");
             
             var calculation = await _okxService.CalculateOrderAsync("ETH", 5, 5, "LONG");
             
@@ -1013,8 +1014,8 @@ public class TestController : ControllerBase
             
             testResults.Add(new
             {
-                Step = "3ï¸âƒ£ ETH LONG AÃ‡",
-                Status = result.Success ? "âœ… BAÅARILI" : "âŒ BAÅARISIZ",
+                Step = "3️⃣ ETH LONG AÇ",
+                Status = result.Success ? "✅ BAŞARILI" : "❌ BAŞARISIZ",
                 OrderId = result.OrderId,
                 Contracts = calculation.Contracts,
                 CoinAmount = $"{calculation.CoinAmount:F4} ETH",
@@ -1025,25 +1026,25 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            testResults.Add(new { Step = "3ï¸âƒ£ ETH LONG AÃ‡", Status = "âŒ HATA", Error = ex.Message });
+            testResults.Add(new { Step = "3️⃣ ETH LONG AÇ", Status = "❌ HATA", Error = ex.Message });
         }
 
         await Task.Delay(1000);
 
         // ================================================================
-        // AÅAMA 4: TÃœM POZÄ°SYONLARI GÃ–STER
+        // AŞAMA 4: TÜM POZİSYONLARI GÖSTER
         // ================================================================
         List<Position> allPositions = new();
         try
         {
-            _logger.LogInformation("4ï¸âƒ£ Pozisyonlar listeleniyor...");
+            _logger.LogInformation("4️⃣ Pozisyonlar listeleniyor...");
             
             allPositions = await _okxService.GetAllPositionsAsync();
             
             testResults.Add(new
             {
-                Step = "4ï¸âƒ£ AÃ‡IK POZÄ°SYONLAR",
-                Status = "âœ…",
+                Step = "4️⃣ AÇIK POZİSYONLAR",
+                Status = "✅",
                 TotalPositions = allPositions.Count,
                 Positions = allPositions.Select(p => new
                 {
@@ -1058,82 +1059,82 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            testResults.Add(new { Step = "4ï¸âƒ£ POZÄ°SYONLAR", Status = "âŒ HATA", Error = ex.Message });
+            testResults.Add(new { Step = "4️⃣ POZİSYONLAR", Status = "❌ HATA", Error = ex.Message });
         }
 
         await Task.Delay(1000);
 
         // ================================================================
-        // AÅAMA 5: DOGE LONG KAPAT
+        // AŞAMA 5: DOGE LONG KAPAT
         // ================================================================
         try
         {
-            _logger.LogInformation("5ï¸âƒ£ DOGE LONG kapatÄ±lÄ±yor...");
+            _logger.LogInformation("5️⃣ DOGE LONG kapatılıyor...");
             
             var result = await _okxService.ClosePositionAsync("DOGE", "long");
             
             testResults.Add(new
             {
-                Step = "5ï¸âƒ£ DOGE LONG KAPAT",
-                Status = result.Success ? "âœ… KAPATILDI" : "âŒ BAÅARISIZ",
+                Step = "5️⃣ DOGE LONG KAPAT",
+                Status = result.Success ? "✅ KAPATILDI" : "❌ BAŞARISIZ",
                 Error = result.ErrorMessage
             });
         }
         catch (Exception ex)
         {
-            testResults.Add(new { Step = "5ï¸âƒ£ DOGE LONG KAPAT", Status = "âŒ HATA", Error = ex.Message });
+            testResults.Add(new { Step = "5️⃣ DOGE LONG KAPAT", Status = "❌ HATA", Error = ex.Message });
         }
 
         await Task.Delay(500);
 
         // ================================================================
-        // AÅAMA 6: DOGE SHORT KAPAT
+        // AŞAMA 6: DOGE SHORT KAPAT
         // ================================================================
         try
         {
-            _logger.LogInformation("6ï¸âƒ£ DOGE SHORT kapatÄ±lÄ±yor...");
+            _logger.LogInformation("6️⃣ DOGE SHORT kapatılıyor...");
             
             var result = await _okxService.ClosePositionAsync("DOGE", "short");
             
             testResults.Add(new
             {
-                Step = "6ï¸âƒ£ DOGE SHORT KAPAT",
-                Status = result.Success ? "âœ… KAPATILDI" : "âŒ BAÅARISIZ",
+                Step = "6️⃣ DOGE SHORT KAPAT",
+                Status = result.Success ? "✅ KAPATILDI" : "❌ BAŞARISIZ",
                 Error = result.ErrorMessage
             });
         }
         catch (Exception ex)
         {
-            testResults.Add(new { Step = "6ï¸âƒ£ DOGE SHORT KAPAT", Status = "âŒ HATA", Error = ex.Message });
+            testResults.Add(new { Step = "6️⃣ DOGE SHORT KAPAT", Status = "❌ HATA", Error = ex.Message });
         }
 
         await Task.Delay(500);
 
         // ================================================================
-        // AÅAMA 7: ETH LONG KAPAT
+        // AŞAMA 7: ETH LONG KAPAT
         // ================================================================
         try
         {
-            _logger.LogInformation("7ï¸âƒ£ ETH LONG kapatÄ±lÄ±yor...");
+            _logger.LogInformation("7️⃣ ETH LONG kapatılıyor...");
             
             var result = await _okxService.ClosePositionAsync("ETH", "long");
             
             testResults.Add(new
             {
-                Step = "7ï¸âƒ£ ETH LONG KAPAT",
-                Status = result.Success ? "âœ… KAPATILDI" : "âŒ BAÅARISIZ",
+                Step = "7️⃣ ETH LONG KAPAT",
+                Status = result.Success ? "✅ KAPATILDI" : "❌ BAŞARISIZ",
                 Error = result.ErrorMessage
             });
         }
         catch (Exception ex)
         {
-            testResults.Add(new { Step = "7ï¸âƒ£ ETH LONG KAPAT", Status = "âŒ HATA", Error = ex.Message });
+            testResults.Add(new { Step = "7️⃣ ETH LONG KAPAT", Status = "❌ HATA", Error = ex.Message });
         }
 
         await Task.Delay(500);
 
         // ================================================================
-        // AÅAMA 8: FÄ°NAL DURUM
+        // AŞAMA 8: FİNAL DURUM
         // ================================================================
         decimal endBalance = 0;
         int remainingPositions = 0;
@@ -1147,8 +1148,8 @@ public class TestController : ControllerBase
             
             testResults.Add(new
             {
-                Step = "8ï¸âƒ£ FÄ°NAL DURUM",
-                Status = "âœ…",
+                Step = "8️⃣ FİNAL DURUM",
+                Status = "✅",
                 StartBalance = $"${startBalance:F2}",
                 EndBalance = $"${endBalance:F2}",
                 TotalPnL = $"${pnl:+0.00;-0.00}",
@@ -1157,14 +1158,14 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            testResults.Add(new { Step = "8ï¸âƒ£ FÄ°NAL DURUM", Status = "âŒ HATA", Error = ex.Message });
+            testResults.Add(new { Step = "8️⃣ FİNAL DURUM", Status = "❌ HATA", Error = ex.Message });
         }
 
         var totalTime = (DateTime.Now - startTime).TotalSeconds;
 
         return Ok(new
         {
-            TestName = "ğŸš€ FULL LIVE CYCLE TEST",
+            TestName = "🚀 FULL LIVE CYCLE TEST",
             TotalSteps = testResults.Count,
             TotalTimeSeconds = Math.Round(totalTime, 1),
             Results = testResults,
@@ -1179,17 +1180,17 @@ public class TestController : ControllerBase
     }
 
     // ================================================================
-    // ğŸ¤– AI TEST ENDPOINT'LERÄ°
+    // 🤖 AI TEST ENDPOINT'LERİ
     // ================================================================
 
     /// <summary>
-    /// ğŸ”Œ AI BaÄŸlantÄ± Testi
+    /// 🔌 AI Bağlantı Testi
     /// GET /api/test/ai/connection
     /// </summary>
     [HttpGet("ai/connection")]
     public async Task<IActionResult> TestAIConnection()
     {
-        _logger.LogInformation("ğŸ”Œ AI BaÄŸlantÄ± testi baÅŸlatÄ±lÄ±yor...");
+        _logger.LogInformation("🔌 AI Bağlantı testi başlatılıyor...");
 
         try
         {
@@ -1198,31 +1199,31 @@ public class TestController : ControllerBase
             return Ok(new
             {
                 Test = "AI Connection Test",
-                Status = success ? "âœ… BAÅARILI" : "âŒ HATA",
+                Status = success ? "✅ BAŞARILI" : "❌ HATA",
                 Message = message,
                 Timestamp = DateTime.Now
             });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AI baÄŸlantÄ± testi hatasÄ±");
+            _logger.LogError(ex, "AI bağlantı testi hatası");
             return Ok(new
             {
                 Test = "AI Connection Test",
-                Status = "âŒ HATA",
+                Status = "❌ HATA",
                 Error = ex.Message
             });
         }
     }
 
     /// <summary>
-    /// ğŸ’¬ AI'a Basit Soru Sor
+    /// 💬 AI'a Basit Soru Sor
     /// GET /api/test/ai/ask?q=merhaba
     /// </summary>
     [HttpGet("ai/ask")]
-    public async Task<IActionResult> AskAI([FromQuery] string q = "Merhaba, kripto piyasasÄ± hakkÄ±nda ne dÃ¼ÅŸÃ¼nÃ¼yorsun?")
+    public async Task<IActionResult> AskAI([FromQuery] string q = "Merhaba, kripto piyasası hakkında ne düşünüyorsun?")
     {
-        _logger.LogInformation("ğŸ’¬ AI'a soru soruluyor: {Question}", q);
+        _logger.LogInformation("💬 AI'a soru soruluyor: {Question}", q);
 
         try
         {
@@ -1233,7 +1234,7 @@ public class TestController : ControllerBase
             return Ok(new
             {
                 Test = "AI Ask",
-                Status = "âœ… BAÅARILI",
+                Status = "✅ BAŞARILI",
                 Question = q,
                 Response = response,
                 DurationMs = Math.Round(duration, 0),
@@ -1242,11 +1243,11 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AI soru hatasÄ±");
+            _logger.LogError(ex, "AI soru hatası");
             return Ok(new
             {
                 Test = "AI Ask",
-                Status = "âŒ HATA",
+                Status = "❌ HATA",
                 Question = q,
                 Error = ex.Message
             });
@@ -1254,22 +1255,22 @@ public class TestController : ControllerBase
     }
 
     /// <summary>
-    /// ğŸ‹ Sahte Balina Hareketi ile AI Karar Testi
+    /// 🐋 Sahte Balina Hareketi ile AI Karar Testi
     /// POST /api/test/ai/analyze
-    /// SimÃ¼le edilmiÅŸ bir balina hareketi gÃ¶nderir ve AI'Ä±n kararÄ±nÄ± dÃ¶ndÃ¼rÃ¼r
+    /// Simüle edilmiş bir balina hareketi gönderir ve AI'ın kararını döndürür
     /// </summary>
     [HttpPost("ai/analyze")]
     public async Task<IActionResult> TestAIAnalysis([FromBody] AITestRequest? request = null)
     {
-        _logger.LogInformation("ğŸ‹ AI Analiz testi baÅŸlatÄ±lÄ±yor...");
+        _logger.LogInformation("🐋 AI Analiz testi başlatılıyor...");
 
         try
         {
-            // 1. Mevcut bakiye ve pozisyonlarÄ± al
+            // 1. Mevcut bakiye ve pozisyonları al
             var userStats = await _okxService.GetAccountInfoAsync();
             var positions = await _okxService.GetAllPositionsAsync();
 
-            // 2. Test iÃ§in sahte balina hareketi oluÅŸtur (ya da request'ten al)
+            // 2. Test için sahte balina hareketi oluştur (ya da request'ten al)
             var movement = request?.Movement ?? new WhaleMovement
             {
                 Type = "BUY",
@@ -1282,11 +1283,11 @@ public class TestController : ControllerBase
                 WhalePositionAfter = 10.5m
             };
 
-            // 3. AI Context oluÅŸtur
+            // 3. AI Context oluştur
             var context = new AIContext
             {
                 OurBalanceUSDT = userStats.TotalUsd,
-                WhaleBalanceUSDT = request?.WhaleBalance ?? 500000m, // 500K varsayÄ±lan
+                WhaleBalanceUSDT = request?.WhaleBalance ?? 500000m, // 500K varsayılan
                 NewMovement = movement,
                 OurPositions = positions.Select(p => new OurPosition
                 {
@@ -1299,10 +1300,10 @@ public class TestController : ControllerBase
                 }).ToList()
             };
 
-            _logger.LogInformation("ğŸ“Š AI Context: Balance=${Balance}, Positions={Count}",
+            _logger.LogInformation("📊 AI Context: Balance=${Balance}, Positions={Count}",
                 context.OurBalanceUSDT, context.OurPositions.Count);
 
-            // 4. AI'a gÃ¶nder
+            // 4. AI'a gönder
             var startTime = DateTime.Now;
             var decision = await _aiService.AnalyzeMovementAsync(context);
             var duration = (DateTime.Now - startTime).TotalMilliseconds;
@@ -1310,7 +1311,7 @@ public class TestController : ControllerBase
             return Ok(new
             {
                 Test = "AI Analysis",
-                Status = decision.ParseSuccess ? "âœ… BAÅARILI" : "âš ï¸ PARSE HATASI",
+                Status = decision.ParseSuccess ? "✅ BAŞARILI" : "⚠️ PARSE HATASI",
                 Input = new
                 {
                     OurBalance = $"${context.OurBalanceUSDT:F2}",
@@ -1347,11 +1348,11 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AI Analiz testi hatasÄ±");
+            _logger.LogError(ex, "AI Analiz testi hatası");
             return Ok(new
             {
                 Test = "AI Analysis",
-                Status = "âŒ HATA",
+                Status = "❌ HATA",
                 Error = ex.Message,
                 StackTrace = ex.StackTrace
             });
@@ -1359,10 +1360,10 @@ public class TestController : ControllerBase
     }
 
     /// <summary>
-    /// ğŸ”„ FULL AI â†’ OKX TEST (SimÃ¼lasyon)
+    /// 🔄 FULL AI → OKX TEST (Simülasyon)
     /// POST /api/test/ai/full-cycle
-    /// AI karar verir, ShouldTrade=true ise OKX'e gerÃ§ek iÅŸlem gÃ¶nderir
-    /// âš ï¸ DÄ°KKAT: GERÃ‡EK Ä°ÅLEM AÃ‡AR!
+    /// AI karar verir, ShouldTrade=true ise OKX'e gerçek işlem gönderir
+    /// ⚠️ DİKKAT: GERÇEK İŞLEM AÇAR!
     /// </summary>
     [HttpPost("ai/full-cycle")]
     public async Task<IActionResult> AIFullCycleTest([FromBody] AITestRequest? request = null)
@@ -1370,8 +1371,8 @@ public class TestController : ControllerBase
         var testResults = new List<object>();
         var startTime = DateTime.Now;
 
-        _logger.LogInformation("ğŸš€ AI FULL CYCLE TEST BAÅLIYOR...");
-        _logger.LogWarning("âš ï¸ DÄ°KKAT: Bu test GERÃ‡EK Ä°ÅLEM yapabilir!");
+        _logger.LogInformation("🚀 AI FULL CYCLE TEST BAŞLIYOR...");
+        _logger.LogWarning("⚠️ DİKKAT: Bu test GERÇEK İŞLEM yapabilir!");
 
         try
         {
@@ -1382,7 +1383,7 @@ public class TestController : ControllerBase
 
             testResults.Add(new
             {
-                Step = "1ï¸âƒ£ BAÅLANGIÃ‡ DURUMU",
+                Step = "1️⃣ BAŞLANGIÇ DURUMU",
                 Balance = $"${startBalance:F2}",
                 OpenPositions = positions.Count
             });
@@ -1402,7 +1403,7 @@ public class TestController : ControllerBase
 
             testResults.Add(new
             {
-                Step = "2ï¸âƒ£ BALÄ°NA HAREKETÄ°",
+                Step = "2️⃣ BALİNA HAREKETİ",
                 Type = movement.Type,
                 Symbol = movement.Symbol,
                 Value = $"${movement.ValueUSDT:F2}",
@@ -1431,7 +1432,7 @@ public class TestController : ControllerBase
 
             testResults.Add(new
             {
-                Step = "3ï¸âƒ£ AI KARARI",
+                Step = "3️⃣ AI KARARI",
                 Action = decision.Action,
                 Symbol = decision.Symbol,
                 Amount = $"${decision.AmountUSDT:F2}",
@@ -1441,15 +1442,15 @@ public class TestController : ControllerBase
                 ShouldTrade = decision.ShouldTrade
             });
 
-            // Step 5: Ä°ÅŸlem Yap (eÄŸer AI onayladÄ±ysa)
+            // Step 5: İşlem Yap (eğer AI onayladıysa)
             if (decision.ShouldTrade)
             {
                 if (decision.Action == "LONG")
                 {
-                    _logger.LogInformation("ğŸ“ˆ LONG pozisyon aÃ§Ä±lÄ±yor: {Symbol} ${Amount}",
+                    _logger.LogInformation("📈 LONG pozisyon açılıyor: {Symbol} ${Amount}",
                         decision.Symbol, decision.AmountUSDT);
 
-                    // TradeSignal oluÅŸtur ve ExecuteTradeAsync kullan
+                    // TradeSignal oluştur ve ExecuteTradeAsync kullan
                     var signal = new TradeSignal
                     {
                         Symbol = decision.Symbol,
@@ -1464,8 +1465,8 @@ public class TestController : ControllerBase
 
                     testResults.Add(new
                     {
-                        Step = "4ï¸âƒ£ Ä°ÅLEM SONUCU",
-                        Status = tradeResult.Success ? "âœ… BAÅARILI" : "âŒ HATA",
+                        Step = "4️⃣ İŞLEM SONUCU",
+                        Status = tradeResult.Success ? "✅ BAŞARILI" : "❌ HATA",
                         OrderId = tradeResult.OrderId,
                         Error = tradeResult.ErrorMessage
                     });
@@ -1473,7 +1474,7 @@ public class TestController : ControllerBase
                 else if (decision.Action == "CLOSE_LONG" || decision.Action == "SHORT")
                 {
                     // SHORT = Mevcut LONG pozisyonu kapat
-                    _logger.LogInformation("ğŸ“‰ SHORT sinyali: {Symbol} pozisyonu kapatÄ±lÄ±yor", decision.Symbol);
+                    _logger.LogInformation("📉 SHORT sinyali: {Symbol} pozisyonu kapatılıyor", decision.Symbol);
 
                     // Mevcut pozisyonu bul
                     var instId = $"{decision.Symbol}-USDT-SWAP";
@@ -1487,8 +1488,8 @@ public class TestController : ControllerBase
 
                         testResults.Add(new
                         {
-                            Step = "4ï¸âƒ£ POZÄ°SYON KAPATMA",
-                            Status = closeResult.Success ? "âœ… BAÅARILI" : "âŒ HATA",
+                            Step = "4️⃣ POZİSYON KAPATMA",
+                            Status = closeResult.Success ? "✅ BAŞARILI" : "❌ HATA",
                             OrderId = closeResult.OrderId,
                             ClosedPosition = $"{existingPosition.Symbol} ${existingPosition.MarginUsd:F2}",
                             Error = closeResult.ErrorMessage
@@ -1498,9 +1499,9 @@ public class TestController : ControllerBase
                     {
                         testResults.Add(new
                         {
-                            Step = "4ï¸âƒ£ POZÄ°SYON KAPATMA",
-                            Status = "âš ï¸ POZÄ°SYON BULUNAMADI",
-                            Message = $"{instId} iÃ§in aÃ§Ä±k LONG pozisyon yok"
+                            Step = "4️⃣ POZİSYON KAPATMA",
+                            Status = "⚠️ POZİSYON BULUNAMADI",
+                            Message = $"{instId} için açık LONG pozisyon yok"
                         });
                     }
                 }
@@ -1508,8 +1509,8 @@ public class TestController : ControllerBase
                 {
                     testResults.Add(new
                     {
-                        Step = "4ï¸âƒ£ Ä°ÅLEM",
-                        Status = "â­ï¸ ATLANDIÄ",
+                        Step = "4️⃣ İŞLEM",
+                        Status = "⏭️ ATLANDIĞ",
                         Reason = $"Action: {decision.Action}"
                     });
                 }
@@ -1518,8 +1519,8 @@ public class TestController : ControllerBase
             {
                 testResults.Add(new
                 {
-                    Step = "4ï¸âƒ£ Ä°ÅLEM",
-                    Status = "â­ï¸ AI ONAYLAMADI",
+                    Step = "4️⃣ İŞLEM",
+                    Status = "⏭️ AI ONAYLAMADI",
                     Reason = decision.Reasoning
                 });
             }
@@ -1531,7 +1532,7 @@ public class TestController : ControllerBase
 
             testResults.Add(new
             {
-                Step = "5ï¸âƒ£ FÄ°NAL DURUM",
+                Step = "5️⃣ FİNAL DURUM",
                 StartBalance = $"${startBalance:F2}",
                 EndBalance = $"${finalStats.TotalUsd:F2}",
                 PnL = $"${(finalStats.TotalUsd - startBalance):+0.00;-0.00}",
@@ -1542,7 +1543,7 @@ public class TestController : ControllerBase
 
             return Ok(new
             {
-                TestName = "ğŸ¤– AI FULL CYCLE TEST",
+                TestName = "🤖 AI FULL CYCLE TEST",
                 TotalSteps = testResults.Count,
                 TotalTimeSeconds = Math.Round(totalTime, 1),
                 Results = testResults,
@@ -1560,36 +1561,36 @@ public class TestController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AI Full Cycle test hatasÄ±");
+            _logger.LogError(ex, "AI Full Cycle test hatası");
             testResults.Add(new
             {
-                Step = "âŒ HATA",
+                Step = "❌ HATA",
                 Error = ex.Message,
                 StackTrace = ex.StackTrace
             });
 
             return Ok(new
             {
-                TestName = "ğŸ¤– AI FULL CYCLE TEST",
-                Status = "âŒ HATA",
+                TestName = "🤖 AI FULL CYCLE TEST",
+                Status = "❌ HATA",
                 Results = testResults
             });
         }
     }
 
     // ================================================================
-    // ğŸ‹ WHALE LIVE CYCLE TEST - TAM SENARYO
+    // 🐋 WHALE LIVE CYCLE TEST - TAM SENARYO
     // ================================================================
 
     /// <summary>
-    /// ğŸ‹ WHALE LIVE CYCLE TEST
-    /// Mock whale verisi ile gerÃ§ek AI + OKX iÅŸlem testi
+    /// 🐋 WHALE LIVE CYCLE TEST
+    /// Mock whale verisi ile gerçek AI + OKX işlem testi
     /// 
     /// SENARYO:
-    /// 1. BaÅŸlangÄ±Ã§ durumu kontrol (pozisyon yok)
-    /// 2. Whale ETH alÄ±yor ($400) â†’ AI analiz â†’ OKX LONG aÃ§
-    /// 3. Whale yarÄ±sÄ±nÄ± satÄ±yor ($200) â†’ AI analiz â†’ OKX kÄ±smi kapat
-    /// 4. Whale kalanÄ± satÄ±yor ($200) â†’ AI analiz â†’ OKX tam kapat
+    /// 1. Başlangıç durumu kontrol (pozisyon yok)
+    /// 2. Whale ETH alıyor ($400) → AI analiz → OKX LONG aç
+    /// 3. Whale yarısını satıyor ($200) → AI analiz → OKX kısmi kapat
+    /// 4. Whale kalanı satıyor ($200) → AI analiz → OKX tam kapat
     /// 
     /// GET /api/test/whale-live-cycle
     /// </summary>
@@ -1838,9 +1839,231 @@ public class TestController : ControllerBase
             Results = testResults
         });
     }
+    // ================================================================
+    // WHALE HISTORY REPLAY - MEGA TEST (LIVE)
+    // ================================================================
+
+    /// <summary>
+    /// Raw whale ge�mi�ini tek tek AI'a g�nderip OKX'te canl� replay eder.
+    ///
+    /// GET /api/test/whale-history-replay
+    /// Varsay�lan dosya: data/whale_history_raw.txt
+    /// </summary>
+    [HttpGet("whale-history-replay")]
+    public async Task<IActionResult> WhaleHistoryReplay(
+        [FromQuery] string file = "data/whale_history_raw.txt",
+        [FromQuery] decimal whaleBalanceUSDT = 100000m,
+        [FromQuery] int delayMs = 500)
+    {
+        var results = new List<object>();
+        var startTime = DateTime.UtcNow;
+
+        _logger.LogWarning("MEGA TEST ba�l�yor. TAMAMEN LIVE emir g�nderilecek!");
+
+        if (!System.IO.File.Exists(file))
+        {
+            return Ok(new
+            {
+                Title = "WHALE HISTORY REPLAY",
+                Status = "ERROR",
+                Error = $"Dosya bulunamad�: {file}"
+            });
+        }
+
+        var rawText = System.IO.File.ReadAllText(file);
+        var blocks = ExtractEventBlocks(rawText).ToList();
+
+        results.Add(new
+        {
+            Stage = "0 - LOADED",
+            Timestamp = DateTime.Now.ToString("HH:mm:ss.fff"),
+            File = file,
+            TotalBlocks = blocks.Count
+        });
+
+        var index = 0;
+
+        foreach (var block in blocks)
+        {
+            index++;
+
+            var userStats = await _okxService.GetAccountInfoAsync();
+            var positions = userStats.ActivePositions;
+
+            var movement = new WhaleMovement
+            {
+                Type = "RAW",
+                RawText = block,
+                TxHash = $"0x_raw_{Guid.NewGuid():N}"[..12],
+                Timestamp = DateTime.UtcNow
+            };
+
+            var context = new AIContext
+            {
+                OurBalanceUSDT = userStats.TotalUsd,
+                WhaleBalanceUSDT = whaleBalanceUSDT,
+                NewMovement = movement,
+                OurPositions = positions.Select(p => new OurPosition
+                {
+                    Symbol = p.Symbol,
+                    Direction = p.Direction,
+                    MarginUSDT = p.MarginUsd,
+                    Leverage = p.MarginUsd > 0 && p.EntryPrice > 0
+                        ? (int)Math.Ceiling((p.Size * p.EntryPrice) / p.MarginUsd)
+                        : 3,
+                    EntryPrice = p.EntryPrice,
+                    UnrealizedPnL = p.UnrealizedPnl
+                }).ToList()
+            };
+
+            _logger.LogInformation("Replay {Index}/{Total} - RAW EVENT:\n{Block}", index, blocks.Count, block);
+
+            var decision = await _aiService.AnalyzeMovementAsync(context);
+
+            _logger.LogInformation(
+                "Replay {Index} - AI: Action={Action} Symbol={Symbol} AmountUSDT={Amount:F4} ShouldTrade={ShouldTrade}",
+                index,
+                decision.Action,
+                decision.Symbol,
+                decision.AmountUSDT,
+                decision.ShouldTrade);
+
+            TradeSignal? signal = null;
+            TradeResult? tradeResult = null;
+            string? skipReason = null;
+
+            if (decision.ShouldTrade)
+            {
+                if (!await _okxService.IsSymbolSupportedAsync(decision.Symbol))
+                {
+                    skipReason = $"OKX futures desteklemiyor: {decision.Symbol}";
+                }
+                else
+                {
+                    var mappedAction = decision.Action.ToUpperInvariant() switch
+                    {
+                        "LONG" => TradeAction.OPEN_LONG,
+                        "CLOSE_LONG" => TradeAction.CLOSE_LONG,
+                        _ => TradeAction.IGNORE
+                    };
+
+                    if (mappedAction == TradeAction.IGNORE)
+                    {
+                        skipReason = $"Action ignore: {decision.Action}";
+                    }
+                    else
+                    {
+                        signal = new TradeSignal
+                        {
+                            Decision = "TRADE",
+                            Reason = decision.Reasoning,
+                            Symbol = decision.Symbol,
+                            Action = mappedAction,
+                            Leverage = decision.Leverage,
+                            MarginAmountUSDT = decision.AmountUSDT,
+                            TradeConfidence = decision.ConfidenceScore,
+                            SourceTxHash = movement.TxHash
+                        };
+
+                        tradeResult = await _okxService.ExecuteTradeAsync(signal);
+                    }
+                }
+            }
+            else
+            {
+                skipReason = decision.Reasoning;
+            }
+
+            results.Add(new
+            {
+                Index = index,
+                Timestamp = DateTime.Now.ToString("HH:mm:ss.fff"),
+                RawEvent = block,
+                AIDecision = new
+                {
+                    decision.Action,
+                    decision.Symbol,
+                    decision.AmountUSDT,
+                    decision.Leverage,
+                    decision.ConfidenceScore,
+                    decision.Reasoning,
+                    decision.ShouldTrade,
+                    decision.ParseSuccess,
+                    decision.ParseError,
+                    decision.RawResponse
+                },
+                Signal = signal == null
+                    ? null
+                    : new
+                    {
+                        signal.Action,
+                        signal.Symbol,
+                        signal.MarginAmountUSDT,
+                        signal.Leverage
+                    },
+                OkxResult = tradeResult == null
+                    ? null
+                    : new
+                    {
+                        tradeResult.Success,
+                        tradeResult.OrderId,
+                        tradeResult.Symbol,
+                        tradeResult.Side,
+                        tradeResult.Size,
+                        tradeResult.ErrorMessage
+                    },
+                SkipReason = skipReason
+            });
+
+            if (delayMs > 0)
+            {
+                await Task.Delay(delayMs);
+            }
+        }
+
+        var totalTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
+
+        return Ok(new
+        {
+            Title = "WHALE HISTORY REPLAY",
+            Status = "COMPLETED",
+            TotalBlocks = blocks.Count,
+            TotalDurationMs = Math.Round(totalTimeMs, 0),
+            Results = results
+        });
+    }
+
+    private static IEnumerable<string> ExtractEventBlocks(string rawText)
+    {
+        if (string.IsNullOrWhiteSpace(rawText))
+        {
+            yield break;
+        }
+
+        var blocks = Regex.Split(rawText, @"\r?\n\r?\n")
+            .Select(b => b.Trim())
+            .Where(b => !string.IsNullOrWhiteSpace(b));
+
+        foreach (var block in blocks)
+        {
+            if (Regex.IsMatch(block, @"^[A-Za-z]+\s+\d{1,2},\s+\d{4}$"))
+            {
+                continue; // tarih sat�r�
+            }
+
+            if (!Regex.IsMatch(block, @"\b(Trade|Deposit|Receive|Send|Approve|Execute|Mint)\b", RegexOptions.IgnoreCase))
+            {
+                continue; // hareket de�il
+            }
+
+            yield return block;
+        }
+    }
 }
 public class AITestRequest
 {
     public WhaleMovement? Movement { get; set; }
     public decimal? WhaleBalance { get; set; }
 }
+
+

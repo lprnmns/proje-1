@@ -108,14 +108,22 @@ public class GroqService : IAIService
         sb.AppendLine($"Bizim Bakiye: ${context.OurBalanceUSDT:F2} USDT");
         sb.AppendLine($"Balina Bakiye: ${context.WhaleBalanceUSDT:F2} USDT");
         
-        // Oran hesapla
-        var whalePercentage = context.WhaleBalanceUSDT > 0 
-            ? (context.NewMovement.ValueUSDT / context.WhaleBalanceUSDT) * 100 
-            : 0;
-        var ourAmount = context.OurBalanceUSDT * (whalePercentage / 100);
-        sb.AppendLine($"Balina bu işlemde portföyünün %{whalePercentage:F2}'sini kullandı");
-        sb.AppendLine($"Biz de aynı oranda: ${ourAmount:F2} USDT kullanmalıyız");
-        sb.AppendLine();
+        // Oran hesapla (eğer ValueUSDT sağlandıysa)
+        if (context.NewMovement.ValueUSDT > 0 && context.WhaleBalanceUSDT > 0)
+        {
+            var whalePercentage = (context.NewMovement.ValueUSDT / context.WhaleBalanceUSDT) * 100;
+            var ourAmount = context.OurBalanceUSDT * (whalePercentage / 100);
+            sb.AppendLine($"Trade Değeri (USDT): ${context.NewMovement.ValueUSDT:F2}");
+            sb.AppendLine($"Balina bu işlemde portföyünün %{whalePercentage:F2}'sini kullandı");
+            sb.AppendLine($"Biz de aynı oranda: ${ourAmount:F2} USDT kullanmalıyız");
+            sb.AppendLine();
+        }
+        else
+        {
+            sb.AppendLine("Trade değeri RAW EVENT içinden çıkarılmalı.");
+            sb.AppendLine("Formül: amount_usdt = (trade_value_usdt / whale_balance_usdt) * our_balance_usdt");
+            sb.AppendLine();
+        }
 
         // Bizim pozisyonlarımız
         sb.AppendLine("=== BİZİM POZİSYONLARIMIZ ===");
@@ -134,11 +142,42 @@ public class GroqService : IAIService
 
         // Yeni hareket
         sb.AppendLine("=== YENİ BALİNA HAREKETİ ===");
+        if (!string.IsNullOrWhiteSpace(context.NewMovement.RawText))
+        {
+            sb.AppendLine("RAW EVENT (HAM KAYIT):");
+            sb.AppendLine(context.NewMovement.RawText);
+            sb.AppendLine();
+        }
+
+        if (!string.IsNullOrWhiteSpace(context.NewMovement.Chain))
+        {
+            sb.AppendLine($"Chain: {context.NewMovement.Chain}");
+        }
+
         sb.AppendLine($"Tip: {context.NewMovement.Type}");
-        sb.AppendLine($"Token: {context.NewMovement.Symbol}");
-        sb.AppendLine($"Miktar: {context.NewMovement.Amount:F4} {context.NewMovement.Symbol}");
-        sb.AppendLine($"Değer: ${context.NewMovement.ValueUSDT:F2} USDT");
-        sb.AppendLine($"Balina Portföy Oranı: %{whalePercentage:F2}");
+
+        if (!string.IsNullOrWhiteSpace(context.NewMovement.FromToken) ||
+            !string.IsNullOrWhiteSpace(context.NewMovement.ToToken))
+        {
+            sb.AppendLine($"From: {context.NewMovement.FromAmount} {context.NewMovement.FromToken} (${context.NewMovement.FromValueUSDT:F2})");
+            sb.AppendLine($"To: {context.NewMovement.ToAmount} {context.NewMovement.ToToken} (${context.NewMovement.ToValueUSDT:F2})");
+        }
+
+        if (!string.IsNullOrWhiteSpace(context.NewMovement.Symbol))
+        {
+            sb.AppendLine($"Token: {context.NewMovement.Symbol}");
+        }
+
+        if (context.NewMovement.Amount > 0)
+        {
+            sb.AppendLine($"Miktar: {context.NewMovement.Amount:F4} {context.NewMovement.Symbol}");
+        }
+
+        if (context.NewMovement.ValueUSDT > 0)
+        {
+            sb.AppendLine($"Değer: ${context.NewMovement.ValueUSDT:F2} USDT");
+        }
+
         sb.AppendLine();
 
         // Karar istemi - basitleştirilmiş
@@ -153,12 +192,18 @@ public class GroqService : IAIService
 }");
         sb.AppendLine();
         sb.AppendLine("KURALLAR:");
-        sb.AppendLine("1. Balina BUY yaptıysa -> LONG aç (aynı token)");
-        sb.AppendLine("2. Balina SELL yaptıysa -> CLOSE_LONG (mevcut LONG pozisyonu kapat)");
-        sb.AppendLine($"3. amount_usdt = ${ourAmount:F2} (balina ile AYNI ORAN)");
-        sb.AppendLine("4. leverage ve confidence YAZMA, biz sabit 3x kullanıyoruz");
-        sb.AppendLine("5. SADECE JSON döndür, başka bir şey yazma!");
-        sb.AppendLine("6. Minimum kontrol YAPMA - borsadaki gerçek limitler ayrıca kontrol edilecek");
+        sb.AppendLine("1. Tip BUY ise -> LONG aç (aynı token)");
+        sb.AppendLine("2. Tip SELL ise -> CLOSE_LONG (mevcut LONG pozisyonu kapat)");
+        sb.AppendLine("3. Tip TRADE/DEPOSIT/RECEIVE/SEND/APPROVE/EXECUTE ise:");
+        sb.AppendLine("   - SADECE Trade olaylarında işlem yap, diğerlerini IGNORE et");
+        sb.AppendLine("   - USDT/USDC -> coin ise BUY (LONG)");
+        sb.AppendLine("   - coin -> USDT/USDC ise SELL (CLOSE_LONG)");
+        sb.AppendLine("   - USDC = USDT, WETH = ETH olarak normalize et");
+        sb.AppendLine("   - Stable coin yoksa veya değer çıkarılamıyorsa IGNORE et");
+        sb.AppendLine("4. amount_usdt = (trade_value_usdt / whale_balance_usdt) * our_balance_usdt");
+        sb.AppendLine("5. leverage ve confidence YAZMA, biz sabit 3x kullanıyoruz");
+        sb.AppendLine("6. SADECE JSON döndür, başka bir şey yazma!");
+        sb.AppendLine("7. Minimum kontrol YAPMA - borsadaki gerçek limitler ayrıca kontrol edilecek");
 
         return sb.ToString();
     }
@@ -209,7 +254,15 @@ public class GroqService : IAIService
             };
 
             decision.Action = action;
-            decision.Symbol = parsed.Symbol?.ToUpper() ?? "";
+            decision.Symbol = parsed.Symbol?.ToUpperInvariant() ?? "";
+            if (decision.Symbol == "WETH")
+            {
+                decision.Symbol = "ETH";
+            }
+            else if (decision.Symbol == "USDC")
+            {
+                decision.Symbol = "USDT";
+            }
             decision.AmountUSDT = parsed.AmountUsdt;
             decision.Leverage = 3;  // SABİT 3x KALDIRAÇ
             decision.ConfidenceScore = 100; // Güven skoru kullanılmıyor, sabit 100
