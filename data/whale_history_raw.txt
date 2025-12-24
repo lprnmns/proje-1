@@ -1,18 +1,2108 @@
-# Whale history raw text (paste full history here)
-# Each movement should be separated by a blank line.
-# Date headers (e.g. "December 21, 2025") are allowed; they will be ignored.
+﻿December 21, 2025
 
-# Example block:
-# Ethereum
-# Trade
-# 11:32 AM
-# WETH icon
-# -10.652
-# WETH
-# $31,765.43
-# USDT icon
-# +31,889.331
-# USDT
-# $31,872.58
-# From
-# 0x9008...ab41
+Ethereum
+Trade
+11:32 AM
+WETH icon
+-10.652
+WETH
+$31,765.43
+USDT icon
++31,889.331
+USDT
+$31,872.58
+From
+
+0x9008...ab41
+
+December 19, 2025
+
+Ethereum
+Trade
+06:08 AM
+WETH icon
+-22.999
+WETH
+$65,598.55
+USDT icon
++65,714.489
+USDT
+$65,683.86
+From
+
+0x9008...ab41
+
+Ethereum
+Trade
+03:31 AM
+USDT icon
+-95,000
+USDT
+$94,951.96
+WETH icon
++33.652
+WETH
+$95,046.79
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Trade
+02:33 AM
+WETH icon
+-33.284
+WETH
+$93,956.95
+USDT icon
++94,146.903
+USDT
+$94,066.56
+Application
+
+CoW Swap
+CoW Swap
+
+December 18, 2025
+
+Ethereum
+Trade
+08:09 PM
+USDT icon
+-96,500
+USDT
+$96,501.19
+WETH icon
++33.283
+WETH
+$97,909.82
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Trade
+04:09 PM
+WETH icon
+-16.599
+WETH
+$47,847.55
+USDT icon
++48,028.939
+USDT
+$48,005.23
+From
+
+0x9008...ab41
+
+Ethereum
+Trade
+04:01 PM
+WETH icon
+-10.5
+WETH
+$30,157.69
+USDT icon
++30,193.296
+USDT
+$30,204.83
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Deposit
+01:43 AM
+ETH icon
+-22.1
+ETH
+$62,499.24
+WETH icon
++22.1
+WETH
+$62,501.68
+Application
+
+Wrapped ETH
+Wrapped ETH
+
+December 17, 2025
+
+Ethereum
+Trade
+07:15 PM
+USDT icon
+-29,999.999
+USDT
+$29,972.01
+ETH icon
++10.436
+ETH
+$30,412.39
+From
+
+0x9008...ab41
+
+December 15, 2025
+
+Ethereum
+Trade
+06:25 PM
+USDT icon
+-34,999.999
+USDT
+$34,960.77
+ETH icon
++11.675
+ETH
+$35,052.86
+From
+
+0x9008...ab41
+
+December 11, 2025
+
+Ethereum
+Trade
+05:40 AM
+WETH icon
+-7.775
+WETH
+$24,989.15
+USDT icon
++25,043.693
+USDT
+$25,052.10
+From
+
+0x9008...ab41
+
+Ethereum
+Trade
+05:33 AM
+USDT icon
+-25,000
+USDT
+$25,006.63
+WETH icon
++7.776
+WETH
+$25,094.82
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Receive
+12:26 AM
+USDT icon
++17,977.1
+USDT
+$17,979.27
+From
+
+0xc38e...2338
+
+Ethereum
+Trade
+12:21 AM
+RESOLV icon
+-4,262.922
+RESOLV
+$329.35
+USDT icon
++326.257
+USDT
+$326.44
+Application
+
+CoW Swap
+CoW Swap
+
+Avalanche
+Trade
+12:20 AM
+USDC icon
+-12,656.05
+USDC
+$12,661.94
+USDT icon
++12,649.247
+USDT
+$12,656.41
+From
+
+0x9008...ab41
+
+Avalanche
+Trade
+12:17 AM
+AVAX icon
+-881
+AVAX
+$12,599.46
+USDC icon
++12,649.114
+USDC
+$12,598.60
+From
+
+0x9008...ab41
+
+Ethereum
+Trade
+12:16 AM
+PENDLE icon
+-2,529.856
+PENDLE
+$6,184.77
+USDT icon
++6,181.64
+USDT
+$6,182.80
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Trade
+12:16 AM
+WETH icon
+-2.652
+WETH
+$8,879.97
+USDT icon
++8,898.081
+USDT
+$8,899.74
+Application
+
+CoW Swap
+CoW Swap
+
+December 10, 2025
+
+Ethereum
+Deposit
+11:26 PM
+ETH icon
+-2
+ETH
+$6,832.08
+WETH icon
++2
+WETH
+$6,875.33
+Application
+
+Wrapped ETH
+Wrapped ETH
+
+Ethereum
+Trade
+11:20 PM
+UNI icon
+-313.521
+UNI
+$1,846.12
+USDT icon
++1,840.977
+USDT
+$1,842.09
+From
+
+0x9008...ab41
+
+Ethereum
+Trade
+11:08 PM
+PENDLE icon
+-1,999.711
+PENDLE
+$4,892.22
+USDT icon
++4,904.757
+USDT
+$4,909.67
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Trade
+11:06 PM
+PENDLE icon
+-2,000.288
+PENDLE
+$4,875.59
+USDT icon
++4,901.66
+USDT
+$4,897.74
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Trade
+11:00 PM
+WETH icon
+-7.183
+WETH
+$24,334.03
+USDT icon
++24,354.938
+USDT
+$24,363.91
+From
+
+0x9008...ab41
+
+Ethereum
+Trade
+10:59 PM
+WETH icon
+-2.816
+WETH
+$9,542.53
+USDT icon
++9,549.13
+USDT
+$9,552.65
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Trade
+06:06 PM
+WETH icon
+-15.1
+WETH
+$50,093.67
+USDT icon
++50,342.052
+USDT
+$50,379.91
+Application
+
+CoW Swap
+CoW Swap
+
+December 9, 2025
+
+Ethereum
+Trade
+07:51 PM
+WETH icon
+-10.25
+WETH
+$34,243.22
+USDT icon
++34,366.316
+USDT
+$34,294.70
+From
+
+0x9008...ab41
+
+December 4, 2025
+
+Avalanche
+Deposit
+03:26 AM
+AVAX icon
+-220
+AVAX
+$3,257.40
+AVAX icon
++220
+AVAX
+$3,253.90
+From
+
+0xb31f...66c7
+
+Ethereum
+Deposit
+03:11 AM
+ETH icon
+-12
+ETH
+$38,333.52
+WETH icon
++12
+WETH
+$38,313.35
+Application
+
+Wrapped ETH
+Wrapped ETH
+
+November 24, 2025
+
+Monad
+Receive
+02:30 PM
+MON icon
++1
+MON
+$0.03
+From
+
+0xdf74...32bb
+
+November 20, 2025
+
+Ethereum
+Trade
+07:01 PM
+USDT icon
+-39,000
+USDT
+$38,927.03
+ETH icon
++13.199
+ETH
+$39,015.77
+From
+
+0x9008...ab41
+
+Ethereum
+Receive
+05:33 PM
+USDT icon
++28,921.716
+USDT
+$28,905.05
+From
+
+0xc38e...2338
+
+Ethereum
+Receive
+04:57 PM
+USDT icon
++15,000
+USDT
+$14,977.74
+From
+0x5594...ed53
+
+November 13, 2025
+
+Ethereum
+Trade
+07:41 PM
+USDT icon
+-30,000
+USDT
+$30,027.71
+WETH icon
++8.972
+WETH
+$30,191.23
+From
+
+0x9008...ab41
+
+November 11, 2025
+
+Ethereum
+Trade
+08:36 PM
+USDT icon
+-45,000
+USDT
+$44,988.57
+WETH icon
++12.993
+WETH
+$45,122.59
+From
+
+0x9008...ab41
+
+Ethereum
+Trade
+03:41 PM
+USDT icon
+-25,000
+USDT
+$24,982.20
+WETH icon
++7.036
+WETH
+$25,096.91
+From
+
+0x9008...ab41
+
+Ethereum
+Trade
+04:20 AM
+WBTC icon
+-0.467
+WBTC
+$49,331.49
+USDT icon
++50,066.648
+USDT
+$50,075.83
+From
+
+0x9008...ab41
+
+November 4, 2025
+
+Ethereum
+Trade
+05:09 AM
+WBTC icon
+-0.00052
+WBTC
+$55.45
+USDT icon
++55.884
+USDT
+$55.89
+Application
+
+CoW Swap
+CoW Swap
+
+November 3, 2025
+
+Ethereum
+Trade
+09:45 PM
+USDT icon
+-50,000
+USDT
+$49,905.56
+WBTC icon
++0.467
+WBTC
+$50,085.71
+From
+
+0x9008...ab41
+
+Ethereum
+Trade
+08:21 PM
+WBTC icon
+-0.566
+WBTC
+$60,465.22
+USDT icon
++60,917.631
+USDT
+$61,026.34
+From
+
+0x9008...ab41
+
+Ethereum
+Trade
+06:30 PM
+USDT icon
+-60,000
+USDT
+$59,478.65
+WBTC icon
++0.566
+WBTC
+$60,401.96
+From
+
+0x9008...ab41
+
+November 1, 2025
+
+Linea
+Receive
+04:20 PM
+ETH icon
++0.00024
+ETH
+$0.94
+From
+0x8ed9...9adc
+
+October 27, 2025
+
+Ethereum
+Trade
+08:12 AM
+WETH icon
+-4.2
+WETH
+$17,714.75
+USDT icon
++17,764.852
+USDT
+$17,771.39
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Trade
+04:59 AM
+UNI icon
+-934
+UNI
+$6,354.40
+USDT icon
++6,370.091
+USDT
+$6,371.93
+Application
+
+CoW Swap
+CoW Swap
+
+Avalanche
+Approve
+04:21 AM
+AVAX icon
+Wrapped AVAX
+Unlimited
+AVAX
+To
+
+0xc92e...0110
+
+Avalanche
+Approve
+04:20 AM
+AVAX icon
+Wrapped AVAX
+Unlimited
+AVAX
+To
+
+0xc92e...0110
+
+Avalanche
+Deposit
+04:19 AM
+AVAX icon
+-661
+AVAX
+$13,723.59
+AVAX icon
++661
+AVAX
+$13,729.79
+From
+
+0xb31f...66c7
+
+Ethereum
+Approve
+04:15 AM
+WETH icon
+Wrapped Ether
+Unlimited
+WETH
+Application
+
+CoW Protocol
+CoW Protocol
+
+Ethereum
+Deposit
+04:13 AM
+ETH icon
+-4.2
+ETH
+$17,510.85
+WETH icon
++4.2
+WETH
+$17,525.11
+Application
+
+Wrapped ETH
+Wrapped ETH
+
+Ethereum
+Trade
+04:04 AM
+WBTC icon
+-0.474
+WBTC
+$54,494.38
+USDT icon
++54,469.583
+USDT
+$54,503.01
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Approve
+04:03 AM
+WBTC icon
+Wrapped BTC
+Unlimited
+WBTC
+Application
+
+CoW Protocol
+CoW Protocol
+
+October 16, 2025
+
+Ethereum
+Trade
+10:39 PM
+USDT icon
+-7,500
+USDT
+$7,505.86
+PENDLE icon
++2,344.571
+PENDLE
+$7,518.06
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Trade
+06:44 PM
+USDT icon
+-15,000
+USDT
+$15,021.15
+WBTC icon
++0.137
+WBTC
+$15,113.20
+Application
+
+CoW Swap
+CoW Swap
+
+October 12, 2025
+
+Avalanche
+Trade
+03:55 AM
+USDT icon
+-7,500
+USDT
+$7,513.87
+AVAX icon
++357.658
+AVAX
+$7,564.17
+To
+
+0x9008...ab41
+
+Ethereum
+Trade
+12:07 AM
+USDT icon
+-7,500
+USDT
+$7,502.81
+ETH icon
++2.048
+ETH
+$7,530.78
+Application
+
+CoW Swap
+CoW Swap
+
+October 11, 2025
+
+Ethereum
+Receive
+05:00 AM
+USDT icon
++30,000
+USDT
+$30,041.60
+From
+0x5594...ed53
+
+Avalanche
+Receive
+05:00 AM
+USDT icon
++5,000
+USDT
+$5,005.72
+From
+0xc94b...f1fe
+
+October 1, 2025
+
+Ethereum
+Trade
+08:59 PM
+UNI icon
+-35
+UNI
+$280.57
+USDT icon
++278.536
+USDT
+$278.55
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Receive
+08:58 PM
+USDT icon
++320.254
+USDT
+$320.27
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Execute
+08:57 PM
+ETH icon
+-0.075
+ETH
+$322.20
+Application
+
+CoW Swap
+CoW Swap
+
+Avalanche
+Receive
+08:55 PM
+USDT icon
++2,015.102
+USDT
+$2,017.84
+From
+
+0x9008...ab41
+
+Avalanche
+Execute
+08:55 PM
+AVAX icon
+-66
+AVAX
+$2,011.94
+To
+
+0xba3c...adec
+
+Ethereum
+Trade
+08:50 PM
+PENDLE icon
+-76
+PENDLE
+$363.71
+USDT icon
++360.673
+USDT
+$360.85
+Application
+
+CoW Swap
+CoW Swap
+
+September 25, 2025
+
+Avalanche
+Trade
+07:05 PM
+USDC icon
+-10,000
+USDC
+$9,993.49
+AVAX icon
++332.724
+AVAX
+$10,046.76
+To
+
+0x9008...ab41
+
+Ethereum
+Trade
+03:31 PM
+USDT icon
+-7,917.819
+USDT
+$7,912.85
+PENDLE icon
++1,747.041
+PENDLE
+$7,940.13
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Trade
+03:29 PM
+USDT icon
+-2,082.18
+USDT
+$2,082.14
+PENDLE icon
++458.741
+PENDLE
+$2,090.54
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Trade
+04:51 AM
+USDT icon
+-10,000
+USDT
+$9,989.93
+UNI icon
++1,282.521
+UNI
+$10,018.16
+Application
+
+CoW Swap
+CoW Swap
+
+September 23, 2025
+
+Ethereum
+Approve
+01:16 AM
+PENDLE icon
+Pendle
+Unlimited
+PENDLE
+Application
+
+CoW Protocol
+CoW Protocol
+
+Avalanche
+Mint
+01:15 AM
+USDC icon
++10,006.936
+USDC
+$10,001.04
+From
+
+0x0000...0000
+
+Ethereum
+Send
+01:00 AM
+USDT icon
+-10,000
+USDT
+$10,006.59
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Trade
+12:52 AM
+USDT icon
+-9,000
+USDT
+$9,003.27
+ETH icon
++2.145
+ETH
+$8,999.67
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Receive
+12:10 AM
+USDT icon
++50,000
+USDT
+$50,058.93
+From
+0x5594...ed53
+
+Ethereum
+Trade
+12:08 AM
+USDT icon
+-10,000
+USDT
+$10,011.79
+PENDLE icon
++2,055.501
+PENDLE
+$9,976.93
+Application
+
+CoW Swap
+CoW Swap
+
+Ethereum
+Approve
+12:07 AM
+USDT icon
+Tether USD
+Unlimited
+USDT
+Application
+
+CoW Protocol
+CoW Protocol
+
+August 26, 2025
+
+Avalanche
+Receive
+03:56 AM
+AVAX icon
++257.405
+AVAX
+$5,999.04
+From
+
+0xc38e...2338
+
+Ethereum
+Send
+03:56 AM
+USDT icon
+-6,000
+USDT
+$6,018.21
+Application
+
+Socket
+Socket
+
+Ethereum
+Trade
+03:55 AM
+USDT icon
+-6,000
+USDT
+$6,018.21
+ETH icon
++1.38
+ETH
+$6,020.15
+Application
+
+Uniswap V4
+Uniswap V4
+
+Ethereum
+Approve
+03:50 AM
+USDT icon
+Tether USD
+6,000
+USDT
+Application
+
+Socket
+Socket
+
+August 6, 2025
+
+Ethereum
+Trade
+12:00 PM
+MNT icon
+-5,562.751
+MNT
+$5,000.72
+USDT icon
++4,961.515
+USDT
+$4,961.04
+Application
+
+Odos
+Odos
+
+Ethereum
+Approve
+11:59 AM
+MNT icon
+Mantle
+Unlimited
+MNT
+Application
+
+Odos
+Odos
+
+Ethereum
+Trade
+01:14 AM
+USDT icon
+-5,000
+USDT
+$5,004.01
+MNT icon
++5,562.751
+MNT
+$4,966.76
+Application
+
+Odos
+Odos
+
+August 4, 2025
+
+Ethereum
+Approve
+11:34 AM
+WBTC icon
+Wrapped BTC
+0.34
+WBTC
+Application
+
+Permit2
+Permit2
+
+July 13, 2025
+
+Ethereum
+Trade
+09:08 PM
+WBTC icon
+-0.078
+WBTC
+$9,253.07
+USDT icon
++9,238.166
+USDT
+$9,240.67
+Application
+
+Odos
+Odos
+
+July 4, 2025
+
+Ethereum
+Trade
+04:49 PM
+USDT icon
+-40,000
+USDT
+$40,035.92
+WBTC icon
++0.369
+WBTC
+$40,004.45
+Application
+
+0x5f79...dae1
+
+July 2, 2025
+
+Ethereum
+Execute
+11:09 PM
+Failed
+Application
+
+Odos
+Odos
+
+Ethereum
+Receive
+12:32 AM
+USDT icon
++50,000
+USDT
+$50,005.34
+From
+0x5594...ed53
+
+June 30, 2025
+
+Ethereum
+Trade
+03:36 AM
+USDT icon
+-5,000
+USDT
+$5,000.75
+WBTC icon
++0.045
+WBTC
+$4,985.34
+Application
+
+Odos
+Odos
+
+June 17, 2025
+
+Ethereum
+Trade
+06:34 PM
+USDT icon
+-999.662
+USDT
+$999.50
+RESOLV icon
++4,262.922
+RESOLV
+$997.88
+Application
+
+0x13cf...35be
+
+Avalanche
+Approve
+04:09 AM
+USDT icon
+Tether USD
+Unlimited
+USDT
+To
+
+0x0000...8ba3
+
+Avalanche
+Receive
+04:07 AM
+AVAX icon
++0.1
+AVAX
+$1.93
+From
+0xb4558718acd35b2f2bc21ad1a96fbe0e392d18ae's image
+theyavuzarslan.eth
+
+Ethereum
+Trade
+03:12 AM
+WETH icon
+-1.197
+WETH
+$3,035.51
+USDT icon
++3,035.83
+USDT
+$3,037.32
+Application
+
+0x
+0x
+
+Ethereum
+Trade
+03:11 AM
+ZRO icon
+-1,049.853
+ZRO
+$2,006.38
+USDT icon
++1,975.693
+USDT
+$1,976.34
+Application
+
+0x
+0x
+
+Ethereum
+Approve
+03:10 AM
+WETH icon
+Wrapped Ether
+Unlimited
+WETH
+Application
+
+0x
+0x
+
+Ethereum
+Trade
+03:08 AM
+USDT icon
+-2,000
+USDT
+$2,000.65
+ZRO icon
++1,049.853
+ZRO
+$2,006.38
+Application
+
+0xa8c1...1185
+
+June 14, 2025
+
+Ethereum
+Trade
+07:52 PM
+USDT icon
+-2,999.81
+USDT
+$3,004.59
+WETH icon
++1.197
+WETH
+$3,007.45
+Application
+
+MEV
+MEV
+
+Ethereum
+Approve
+02:41 PM
+USDT icon
+Tether USD
+Unlimited
+USDT
+Application
+
+1inch
+1inch
+
+June 12, 2025
+
+Ethereum
+Receive
+02:55 AM
+USDT icon
++10,000
+USDT
+$9,999.76
+From
+0xff8a...d390
+
+Ethereum
+Trade
+02:50 AM
+ZRO icon
+-77.131
+ZRO
+$172.40
+USDT icon
++171.722
+USDT
+$171.76
+Application
+
+0x
+0x
+
+Ethereum
+Approve
+02:50 AM
+ZRO icon
+LayerZero
+Unlimited
+ZRO
+Application
+
+0x
+0x
+
+Ethereum
+Trade
+02:48 AM
+UNI icon
+-29.065
+UNI
+$237.11
+USDT icon
++236.376
+USDT
+$236.43
+Application
+
+Odos
+Odos
+
+Avalanche
+Trade
+02:47 AM
+AVAX icon
+-7.96
+AVAX
+$171.94
+USDT icon
++171.589
+USDT
+$171.63
+Application
+
+0x0000...2734
+
+Ethereum
+Trade
+02:47 AM
+ondo icon
+-200.034
+ondo
+$173.22
+USDT icon
++172.969
+USDT
+$173.01
+Application
+
+Odos
+Odos
+
+Ethereum
+Trade
+02:44 AM
+FET icon
+-617.907
+FET
+$478.68
+USDT icon
++478.872
+USDT
+$479.03
+Application
+
+0x
+0x
+
+Ethereum
+Approve
+02:43 AM
+FET icon
+Fetch
+Unlimited
+FET
+Application
+
+0x
+0x
+
+Ethereum
+Trade
+02:42 AM
+MORPHO icon
+-150.577
+MORPHO
+$237.79
+USDT icon
++236.133
+USDT
+$236.21
+Application
+
+Odos
+Odos
+
+Ethereum
+Trade
+02:41 AM
+ETHFI icon
+-381.141
+ETHFI
+$485.04
+USDT icon
++484.198
+USDT
+$484.35
+Application
+
+0x
+0x
+
+Ethereum
+Approve
+02:40 AM
+ETHFI icon
+Ether.fi
+Unlimited
+ETHFI
+Application
+
+0x
+0x
+
+Ethereum
+Trade
+02:40 AM
+WBTC icon
+-0.018
+WBTC
+$1,998.64
+USDT icon
++1,989.338
+USDT
+$1,988.66
+Application
+
+Odos
+Odos
+
+Ethereum
+Approve
+02:39 AM
+WBTC icon
+Wrapped BTC
+Unlimited
+WBTC
+Application
+
+Odos
+Odos
+
+May 22, 2025
+
+Ethereum
+Receive
+10:10 PM
+USDT icon
++10,000
+USDT
+$10,002.63
+From
+0xff8a...d390
+
+May 21, 2025
+
+Ethereum
+Trade
+11:06 PM
+USDT icon
+-500
+USDT
+$499.91
+ETHFI icon
++381.141
+ETHFI
+$494.54
+Application
+
+0xd71b...7d20
+
+Ethereum
+Trade
+11:04 PM
+USDT icon
+-500
+USDT
+$500.16
+FET icon
++617.907
+FET
+$494.40
+From
+
+0xd71b...7d20
+
+Ethereum
+Trade
+11:02 PM
+USDT icon
+-2,000
+USDT
+$2,000.63
+WBTC icon
++0.018
+WBTC
+$1,985.66
+From
+
+0xd71b...7d20
+
+May 20, 2025
+
+Ethereum
+Receive
+09:16 AM
+USDT icon
++0.15
+USDT
+$0.15
+From
+0x1b82...4f9f
+
+Ethereum
+Receive
+09:12 AM
+ETH icon
++0.00019
+ETH
+$0.50
+From
+0x1b82...4f9f
+
+Ethereum
+Receive
+09:06 AM
+ETH icon
++0.00033
+ETH
+$0.86
+From
+0x6000...f13f
+
+May 16, 2025
+
+Avalanche
+Trade
+08:16 PM
+AVAX icon
+-23
+AVAX
+$542.64
+USDT icon
++542.473
+USDT
+$542.50
+Application
+
+0x0000...2734
+
+Ethereum
+Trade
+08:09 PM
+UNI icon
+-90
+UNI
+$564.45
+USDT icon
++561.559
+USDT
+$561.95
+Application
+
+Uniswap
+Uniswap
+
+Ethereum
+Approve
+08:07 PM
+UNI icon
+Uniswap
+79.2B
+UNI
+Application
+
+Permit2
+Permit2
+
+Ethereum
+Trade
+08:06 PM
+ondo icon
+-557
+ondo
+$540.71
+USDT icon
++537.059
+USDT
+$536.99
+Application
+
+Uniswap
+Uniswap
+
+Ethereum
+Approve
+08:03 PM
+ondo icon
+Ondo Finance
+79.2B
+ondo
+Application
+
+Permit2
+Permit2
+
+Ethereum
+Trade
+08:01 PM
+MORPHO icon
+-315
+MORPHO
+$526.17
+USDT icon
++524.639
+USDT
+$524.82
+Application
+
+Uniswap
+Uniswap
+
+Ethereum
+Approve
+08:00 PM
+MORPHO icon
+Morpho
+Unlimited
+MORPHO
+Application
+
+Permit2
+Permit2
+
+Ethereum
+Trade
+07:57 PM
+ZRO icon
+-227
+ZRO
+$651.58
+USDT icon
++650.272
+USDT
+$649.92
+Application
+
+Uniswap
+Uniswap
+
+Ethereum
+Approve
+07:56 PM
+ZRO icon
+LayerZero
+Unlimited
+ZRO
+Application
+
+Permit2
+Permit2
+
+Ethereum
+Receive
+03:14 PM
+ETH icon
++0.039
+ETH
+$102.23
+From
+0x2345...885d
+
+May 14, 2025
+
+Avalanche
+Trade
+07:11 PM
+AVAX icon
+-7.6
+AVAX
+$192.77
+USDT icon
++193.107
+USDT
+$193.15
+From
+
+0x88de...e9fc
+
+Ethereum
+Trade
+07:10 PM
+UNI icon
+-30
+UNI
+$199.42
+USDT icon
++199.524
+USDT
+$199.57
+Application
+
+Odos
+Odos
+
+Ethereum
+Trade
+07:09 PM
+MORPHO icon
+-116
+MORPHO
+$193.90
+USDT icon
++193.183
+USDT
+$193.22
+Application
+
+Odos
+Odos
+
+Ethereum
+Approve
+07:08 PM
+UNI icon
+Uniswap
+79.2B
+UNI
+Application
+
+Odos
+Odos
+
+Ethereum
+Approve
+07:07 PM
+MORPHO icon
+Morpho
+Unlimited
+MORPHO
+Application
+
+Odos
+Odos
+
+Ethereum
+Trade
+07:06 PM
+ondo icon
+-189
+ondo
+$199.03
+USDT icon
++198.024
+USDT
+$198.09
+Application
+
+Odos
+Odos
+
+Ethereum
+Approve
+07:06 PM
+ondo icon
+Ondo Finance
+79.2B
+ondo
+Application
+
+Odos
+Odos
+
+Ethereum
+Trade
+12:22 PM
+USDT icon
+-1,000
+USDT
+$999.19
+UNI icon
++149.065
+UNI
+$995.89
+Application
+
+Odos
+Odos
+
+Ethereum
+Trade
+12:54 AM
+USDT icon
+-1,000
+USDT
+$999.63
+ZRO icon
++304.131
+ZRO
+$985.64
+Application
+
+0xd71b...7d20
+
+Avalanche
+Receive
+12:52 AM
+AVAX icon
++38.566
+AVAX
+$996.02
+From
+
+0xc38e...2338
+
+Ethereum
+Send
+12:52 AM
+USDT icon
+-1,000
+USDT
+$1,000.39
+Application
+
+Socket
+Socket
+
+Ethereum
+Approve
+12:52 AM
+USDT icon
+Tether USD
+1,000
+USDT
+Application
+
+Socket
+Socket
+
+Ethereum
+Trade
+12:47 AM
+W icon
+-67.1
+W
+$7.50
+USDT icon
++3.602
+USDT
+$3.60
+Application
+
+0xd71b...7d20
+
+Ethereum
+Approve
+12:47 AM
+W icon
+Wormhole Token
+Unlimited
+W
+Application
+
+Permit2
+Permit2
+
+May 13, 2025
+
+Ethereum
+Trade
+11:41 PM
+USDT icon
+-1,000
+USDT
+$1,000.50
+ondo icon
++946.034
+ondo
+$996.53
+Application
+
+Odos
+Odos
+
+Ethereum
+Approve
+11:33 PM
+USDT icon
+Tether USD
+Unlimited
+USDT
+Application
+
+Permit2
+Permit2
+
+Ethereum
+Trade
+11:29 PM
+USDT icon
+-1,000
+USDT
+$999.53
+MORPHO icon
++581.577
+MORPHO
+$992.56
+Application
+
+Odos
+Odos
+
+Ethereum
+Approve
+11:20 PM
+USDT icon
+Tether USD
+Unlimited
+USDT
+Application
+
+Odos
+Odos
+
+Ethereum
+Receive
+10:23 PM
+W icon
++67.1
+W
+$7.30
+Application
+
+Binance
+Binance
+
+Ethereum
+Receive
+09:05 PM
+ETH icon
++0.037
+ETH
+$97.92
+From
+0x2345...885d
+
+Ethereum
+Receive
+09:01 PM
+USDT icon
++10,000
+USDT
+$10,003.10
+From
+0xff8a...d390
