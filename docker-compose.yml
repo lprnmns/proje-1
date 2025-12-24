@@ -1,0 +1,51 @@
+services:
+  # PostgreSQL Veritabanı
+  postgres:
+    image: postgres:16-alpine
+    container_name: whaletracker-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: whaletracker
+      POSTGRES_PASSWORD: whale123!
+      POSTGRES_DB: whaletracker_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U whaletracker -d whaletracker_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # pgAdmin (Veritabanı Yönetim Arayüzü - Opsiyonel)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: whaletracker-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@whaletracker.local
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+  # WhaleTracker API (Build etmek istersen)
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: whaletracker-api
+  #   restart: unless-stopped
+  #   ports:
+  #     - "5000:8080"
+  #   environment:
+  #     - ASPNETCORE_ENVIRONMENT=Development
+  #     - ConnectionStrings__DefaultConnection=Host=postgres;Database=whaletracker_db;Username=whaletracker;Password=whale123!
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+volumes:
+  postgres_data:

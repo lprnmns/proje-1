@@ -1,0 +1,8 @@
+# Build outputs
+**/bin/
+**/obj/
+
+# Local secrets/config
+.env
+**/appsettings.Development.json
+**/appsettings.Local.json
