@@ -63,7 +63,7 @@ public class GroqService : IAIService
             _logger.LogDebug("📝 Prompt:\n{Prompt}", prompt);
 
             // 2. AI'a gönder
-            var response = await SendChatRequestAsync(prompt);
+            var response = await SendChatRequestWithRetryAsync(prompt);
             
             decision.RawResponse = response;
             _logger.LogDebug("🤖 AI Raw Response:\n{Response}", response);
@@ -335,7 +335,7 @@ public class GroqService : IAIService
     /// </summary>
     public async Task<string> AskAsync(string question)
     {
-        return await SendChatRequestAsync(question);
+        return await SendChatRequestWithRetryAsync(question);
     }
 
     /// <summary>
@@ -373,6 +373,65 @@ public class GroqService : IAIService
         var result = JsonSerializer.Deserialize<GroqChatResponse>(responseContent, JsonOptions);
         
         return result?.Choices?.FirstOrDefault()?.Message?.Content ?? "";
+    }
+
+    private async Task<string> SendChatRequestWithRetryAsync(string prompt)
+    {
+        const int maxRetries = 3;
+        const int baseDelayMs = 1000;
+
+        for (var attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                return await SendChatRequestAsync(prompt);
+            }
+            catch (HttpRequestException ex) when (IsRateLimitError(ex))
+            {
+                if (attempt >= maxRetries)
+                {
+                    throw;
+                }
+
+                var delayMs = GetRetryDelayMs(ex.Message, baseDelayMs, attempt);
+                _logger.LogWarning(
+                    "Groq rate limit. Tekrar deneme {Attempt}/{Max} için {Delay}ms bekleniyor.",
+                    attempt + 1,
+                    maxRetries,
+                    delayMs);
+
+                await Task.Delay(delayMs);
+            }
+        }
+
+        throw new InvalidOperationException("Groq retry döngüsü beklenmeyen şekilde sonlandı.");
+    }
+
+    private static bool IsRateLimitError(HttpRequestException ex)
+    {
+        var message = ex.Message ?? string.Empty;
+        return message.Contains("rate_limit", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("TooManyRequests", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Rate limit", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int GetRetryDelayMs(string message, int baseDelayMs, int attempt)
+    {
+        var lower = message.ToLowerInvariant();
+        var msMatch = Regex.Match(lower, @"try again in\s+([\d\.]+)\s*ms");
+        if (msMatch.Success && decimal.TryParse(msMatch.Groups[1].Value, out var msValue))
+        {
+            return (int)Math.Ceiling(msValue);
+        }
+
+        var secMatch = Regex.Match(lower, @"try again in\s+([\d\.]+)\s*s");
+        if (secMatch.Success && decimal.TryParse(secMatch.Groups[1].Value, out var secValue))
+        {
+            return (int)Math.Ceiling(secValue * 1000m);
+        }
+
+        var delay = baseDelayMs * (int)Math.Pow(2, attempt);
+        return Math.Min(delay, 15000);
     }
 }
 

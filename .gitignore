@@ -7,3 +7,4 @@
 **/appsettings.Development.json
 **/appsettings.Local.json
 data/okx_futures_symbols.json
+src/WhaleTracker.API/data/

@@ -484,11 +484,12 @@ public class OkxService : IOkxService
 
                 if (activePosition == null || activePosition.MarginUsd == 0)
                 {
-                    _logger.LogWarning("UYARI: Kapatılacak pozisyon YOK! Symbol: {Symbol}", signal.Symbol);
+                    _logger.LogWarning("SKIP: Kapatılacak pozisyon YOK! Symbol: {Symbol}", signal.Symbol);
                     return new TradeResult
                     {
-                        Success = false,
-                        ErrorMessage = "Pozisyon bulunamadı"
+                        Success = true,
+                        Symbol = signal.Symbol,
+                        ErrorMessage = "Pozisyon yok, işlem atlandı"
                     };
                 }
 
@@ -517,6 +518,17 @@ public class OkxService : IOkxService
                     // Kısmi kapanış için ters yönde emir
                     string side = signal.Action == TradeAction.CLOSE_LONG ? "sell" : "buy";
                     var contracts = await ConvertToContractsAsync(signal.Symbol, signal.MarginAmountUSDT, 1);
+
+                    if (contracts == 0)
+                    {
+                        _logger.LogWarning("SKIP: Kapatma için kontrat 0 çıktı. Symbol: {Symbol}", signal.Symbol);
+                        return new TradeResult
+                        {
+                            Success = true,
+                            Symbol = signal.Symbol,
+                            ErrorMessage = "Kapatma için kontrat hesaplanamadı, işlem atlandı"
+                        };
+                    }
 
                     return await PlaceMarketOrderAsync(signal.Symbol, side, direction, contracts, reduceOnly: true);
                 }
@@ -574,11 +586,17 @@ public class OkxService : IOkxService
 
             if (response?.Code != "0")
             {
-                _logger.LogError("Emir başarısız: {Code} - {Msg}", response?.Code, response?.Msg);
+                var detail = response?.Data?.FirstOrDefault();
+                _logger.LogError(
+                    "Emir başarısız: {Code} - {Msg} (sCode: {SCode}, sMsg: {SMsg})",
+                    response?.Code,
+                    response?.Msg,
+                    detail?.SCode ?? "n/a",
+                    detail?.SMsg ?? "n/a");
                 return new TradeResult
                 {
                     Success = false,
-                    ErrorMessage = $"OKX Error: {response?.Code} - {response?.Msg}"
+                    ErrorMessage = $"OKX Error: {response?.Code} - {response?.Msg} (sCode: {detail?.SCode ?? "n/a"}, sMsg: {detail?.SMsg ?? "n/a"})"
                 };
             }
 
@@ -1076,7 +1094,7 @@ public class OkxService : IOkxService
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogError("HTTP Error: {StatusCode} - {Content}", response.StatusCode, content);
-            throw new HttpRequestException($"OKX API Error: {response.StatusCode}");
+            throw new HttpRequestException($"OKX API Error: {response.StatusCode} - {content}");
         }
 
         return JsonSerializer.Deserialize<T>(content, JsonOptions);
@@ -1104,7 +1122,7 @@ public class OkxService : IOkxService
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogError("HTTP Error: {StatusCode} - {Content}", response.StatusCode, content);
-            throw new HttpRequestException($"OKX API Error: {response.StatusCode}");
+            throw new HttpRequestException($"OKX API Error: {response.StatusCode} - {content}");
         }
 
         return JsonSerializer.Deserialize<T>(content, JsonOptions);

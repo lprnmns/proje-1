@@ -1449,7 +1449,18 @@ public class TestController : ControllerBase
 
             // Step 5: İşlem Yap (eğer AI onayladıysa)
             if (decision.ShouldTrade)
-            {
+            {                if (decision.Action.Equals("CLOSE_LONG", StringComparison.OrdinalIgnoreCase))
+                {
+                    var hasLong = positions.Any(p =>
+                        p.Symbol.Equals(decision.Symbol, StringComparison.OrdinalIgnoreCase) &&
+                        p.Direction.Equals("Long", StringComparison.OrdinalIgnoreCase));
+
+                    if (!hasLong)
+                    {
+                        skipReason = $"LONG pozisyon yok: {decision.Symbol}";
+                    }
+                }
+
                 if (decision.Action == "LONG")
                 {
                     _logger.LogInformation("📈 LONG pozisyon açılıyor: {Symbol} ${Amount}",
@@ -1678,118 +1689,66 @@ public class TestController : ControllerBase
                 decision.Symbol,
                 decision.AmountUSDT,
                 decision.ShouldTrade);
-
             TradeSignal? signal = null;
             TradeResult? tradeResult = null;
+            string? skipReason = null;
 
             if (decision.ShouldTrade)
             {
-                var mappedAction = decision.Action.ToUpperInvariant() switch
+                if (decision.Action.Equals("CLOSE_LONG", StringComparison.OrdinalIgnoreCase))
                 {
-                    "LONG" => TradeAction.OPEN_LONG,
-                    "CLOSE_LONG" => TradeAction.CLOSE_LONG,
-                    "SHORT" => TradeAction.CLOSE_LONG,
-                    _ => TradeAction.IGNORE
-                };
+                    var hasLong = positions.Any(p =>
+                        p.Symbol.Equals(decision.Symbol, StringComparison.OrdinalIgnoreCase) &&
+                        p.Direction.Equals("Long", StringComparison.OrdinalIgnoreCase));
 
-                if (mappedAction != TradeAction.IGNORE)
-                {
-                    signal = new TradeSignal
+                    if (!hasLong)
                     {
-                        Decision = "TRADE",
-                        Reason = decision.Reasoning,
-                        Symbol = decision.Symbol,
-                        Action = mappedAction,
-                        Leverage = decision.Leverage,
-                        MarginAmountUSDT = decision.AmountUSDT,
-                        TradeConfidence = decision.ConfidenceScore,
-                        SourceTxHash = movement.TxHash
+                        skipReason = $"LONG pozisyon yok: {decision.Symbol}";
+                    }
+                }
+
+                if (skipReason == null && !await _okxService.IsSymbolSupportedAsync(decision.Symbol))
+                {
+                    skipReason = $"OKX futures desteklemiyor: {decision.Symbol}";
+                }
+
+                if (skipReason == null)
+                {
+                    var mappedAction = decision.Action.ToUpperInvariant() switch
+                    {
+                        "LONG" => TradeAction.OPEN_LONG,
+                        "CLOSE_LONG" => TradeAction.CLOSE_LONG,
+                        _ => TradeAction.IGNORE
                     };
 
-                    _logger.LogInformation(
-                        "Stage {Stage} - Sending to OKX: {Action} {Symbol} ${Amount:F4} {Leverage}x",
-                        stageName,
-                        signal.Action,
-                        signal.Symbol,
-                        signal.MarginAmountUSDT,
-                        signal.Leverage);
+                    if (mappedAction == TradeAction.IGNORE)
+                    {
+                        skipReason = $"Action ignore: {decision.Action}";
+                    }
+                    else
+                    {
+                        signal = new TradeSignal
+                        {
+                            Decision = "TRADE",
+                            Reason = decision.Reasoning,
+                            Symbol = decision.Symbol,
+                            Action = mappedAction,
+                            Leverage = decision.Leverage,
+                            MarginAmountUSDT = decision.AmountUSDT,
+                            TradeConfidence = decision.ConfidenceScore,
+                            SourceTxHash = movement.TxHash
+                        };
 
-                    tradeResult = await _okxService.ExecuteTradeAsync(signal);
-                    _logger.LogInformation(
-                        "Stage {Stage} - OKX result: Success={Success} OrderId={OrderId} Error={Error}",
-                        stageName,
-                        tradeResult.Success,
-                        tradeResult.OrderId,
-                        tradeResult.ErrorMessage ?? "none");
+                        tradeResult = await _okxService.ExecuteTradeAsync(signal);
+                    }
                 }
             }
-
-            return new
+            else
             {
-                Stage = stageName,
-                Timestamp = DateTime.Now.ToString("HH:mm:ss.fff"),
-                Context = new
-                {
-                    context.OurBalanceUSDT,
-                    context.WhaleBalanceUSDT,
-                    Positions = context.OurPositions.Select(p => new
-                    {
-                        p.Symbol,
-                        p.Direction,
-                        p.MarginUSDT,
-                        p.EntryPrice,
-                        p.UnrealizedPnL
-                    }),
-                    Movement = new
-                    {
-                        movement.Type,
-                        movement.Symbol,
-                        movement.Amount,
-                        movement.ValueUSDT,
-                        movement.Price,
-                        movement.TxHash
-                    }
-                },
-                AIDecision = new
-                {
-                    decision.Action,
-                    decision.Symbol,
-                    decision.AmountUSDT,
-                    decision.Leverage,
-                    decision.ConfidenceScore,
-                    decision.Reasoning,
-                    decision.ShouldTrade,
-                    decision.ParseSuccess,
-                    decision.ParseError,
-                    decision.RawResponse
-                },
-                Signal = signal == null
-                    ? null
-                    : new
-                    {
-                        signal.Action,
-                        signal.Symbol,
-                        signal.MarginAmountUSDT,
-                        signal.Leverage
-                    },
-                OkxResult = tradeResult == null
-                    ? null
-                    : new
-                    {
-                        tradeResult.Success,
-                        tradeResult.OrderId,
-                        tradeResult.Symbol,
-                        tradeResult.Side,
-                        tradeResult.Size,
-                        tradeResult.ErrorMessage
-                    }
-            };
-        }
+                skipReason = decision.Reasoning;
+            }
 
-        try
-        {
-            var accountInfo = await _okxService.GetAccountInfoAsync();
-            testResults.Add(new
+            results.Add(new
             {
                 Stage = "0 - START",
                 Timestamp = DateTime.Now.ToString("HH:mm:ss.fff"),
@@ -1934,18 +1893,30 @@ public class TestController : ControllerBase
                 decision.Symbol,
                 decision.AmountUSDT,
                 decision.ShouldTrade);
-
             TradeSignal? signal = null;
             TradeResult? tradeResult = null;
             string? skipReason = null;
 
             if (decision.ShouldTrade)
             {
-                if (!await _okxService.IsSymbolSupportedAsync(decision.Symbol))
+                if (decision.Action.Equals("CLOSE_LONG", StringComparison.OrdinalIgnoreCase))
+                {
+                    var hasLong = positions.Any(p =>
+                        p.Symbol.Equals(decision.Symbol, StringComparison.OrdinalIgnoreCase) &&
+                        p.Direction.Equals("Long", StringComparison.OrdinalIgnoreCase));
+
+                    if (!hasLong)
+                    {
+                        skipReason = $"LONG pozisyon yok: {decision.Symbol}";
+                    }
+                }
+
+                if (skipReason == null && !await _okxService.IsSymbolSupportedAsync(decision.Symbol))
                 {
                     skipReason = $"OKX futures desteklemiyor: {decision.Symbol}";
                 }
-                else
+
+                if (skipReason == null)
                 {
                     var mappedAction = decision.Action.ToUpperInvariant() switch
                     {
@@ -2097,6 +2068,10 @@ public class AITestRequest
     public WhaleMovement? Movement { get; set; }
     public decimal? WhaleBalance { get; set; }
 }
+
+
+
+
 
 
 
