@@ -45,42 +45,57 @@ public class DecisionEngine : IDecisionEngine
     /// <summary>
     /// Ana karar metodu
     /// </summary>
-    public async Task<TradeSignal> AnalyzeAndDecideAsync(
+    public Task<TradeSignal> AnalyzeAndDecideAsync(
         WhaleStats whaleStats,
         UserStats userStats,
         TransactionEvent transaction)
     {
-        // ================================================================
-        // TODO: AI'DAN KARAR AL
-        // ================================================================
-        // 
-        // 1. System prompt oluştur
-        // var systemPrompt = BuildSystemPrompt();
-        // 
-        // 2. User prompt oluştur (JSON veri)
-        // var userPrompt = await BuildUserPromptAsync(whaleStats, userStats, transaction);
-        // 
-        // 3. OpenAI API'ye gönder
-        // var request = new
-        // {
-        //     model = _settings.Model,
-        //     messages = new[]
-        //     {
-        //         new { role = "system", content = systemPrompt },
-        //         new { role = "user", content = userPrompt }
-        //     },
-        //     temperature = 0.1,  // Düşük temperature = tutarlı kararlar
-        //     response_format = new { type = "json_object" }
-        // };
-        // 
-        // 4. Cevabı parse et ve TradeSignal'a dönüştür
-        // ================================================================
-
         _logger.LogInformation(
             "AnalyzeAndDecideAsync çağrıldı: {Symbol} {Direction} {Amount}",
             transaction.NormalizedSymbol, transaction.Direction, transaction.UsdValue);
 
-        throw new NotImplementedException("AnalyzeAndDecideAsync metodunu implement et!");
+        var symbol = NormalizeSymbol(transaction.NormalizedSymbol);
+        if (string.IsNullOrWhiteSpace(symbol) || !SupportedCoins.Contains(symbol))
+        {
+            return Task.FromResult(Ignore(transaction, $"Unsupported symbol: {symbol}"));
+        }
+
+        if (IsStable(symbol))
+        {
+            return Task.FromResult(Ignore(transaction, "Stablecoin-only movement does not change market bias."));
+        }
+
+        if (transaction.UsdValue <= 0 || userStats.TotalUsd <= 0)
+        {
+            return Task.FromResult(Ignore(transaction, "Missing USD value or user balance."));
+        }
+
+        var margin = CalculateMargin(whaleStats, userStats, transaction);
+        if (margin <= 0 || margin < userStats.TotalUsd * 0.01m)
+        {
+            return Task.FromResult(Ignore(transaction, "Signal is below minimum useful account allocation."));
+        }
+
+        var isIncoming = string.Equals(transaction.Direction, "Incoming", StringComparison.OrdinalIgnoreCase);
+        var isOutgoing = string.Equals(transaction.Direction, "Outgoing", StringComparison.OrdinalIgnoreCase);
+        if (!isIncoming && !isOutgoing)
+        {
+            return Task.FromResult(Ignore(transaction, $"Unsupported direction: {transaction.Direction}"));
+        }
+
+        return Task.FromResult(new TradeSignal
+        {
+            Decision = "TRADE",
+            Reason = isIncoming
+                ? "Deterministic fallback: tracked wallet received risk asset."
+                : "Deterministic fallback: tracked wallet sent/sold risk asset.",
+            Symbol = symbol,
+            Action = isIncoming ? TradeAction.OPEN_LONG : TradeAction.CLOSE_LONG,
+            Leverage = Math.Max(1, userStats.Leverage),
+            MarginAmountUSDT = Math.Round(margin, 4),
+            TradeConfidence = 60,
+            SourceTxHash = transaction.TxHash
+        });
     }
 
     /// <summary>
@@ -149,7 +164,7 @@ Her zaman bu formatta JSON döndür:
     /// <summary>
     /// User Prompt - Anlık veriyi JSON formatında hazırlar
     /// </summary>
-    public async Task<string> BuildUserPromptAsync(
+    public Task<string> BuildUserPromptAsync(
         WhaleStats whaleStats,
         UserStats userStats,
         TransactionEvent transaction)
@@ -202,7 +217,7 @@ Her zaman bu formatta JSON döndür:
 
         _logger.LogDebug("User Prompt hazırlandı:\n{Json}", json);
 
-        return json;
+        return Task.FromResult(json);
     }
 
     /// <summary>
@@ -210,23 +225,79 @@ Her zaman bu formatta JSON döndür:
     /// </summary>
     private TradeSignal ParseAiResponse(string jsonResponse, string sourceTxHash)
     {
-        // TODO: AI'ın JSON cevabını parse et
-        // 
-        // var doc = JsonDocument.Parse(jsonResponse);
-        // var root = doc.RootElement;
-        // 
-        // return new TradeSignal
-        // {
-        //     Decision = root.GetProperty("decision").GetString() ?? "IGNORE",
-        //     Reason = root.GetProperty("reason").GetString() ?? "",
-        //     Symbol = root.GetProperty("symbol").GetString() ?? "",
-        //     Action = root.GetProperty("action").GetString() ?? "",
-        //     Leverage = root.GetProperty("leverage").GetInt32(),
-        //     MarginAmountUSDT = root.GetProperty("marginAmountUSDT").GetDecimal(),
-        //     TradeConfidence = root.GetProperty("tradeConfidence").GetInt32(),
-        //     SourceTxHash = sourceTxHash
-        // };
+        using var doc = JsonDocument.Parse(jsonResponse);
+        var root = doc.RootElement;
 
-        throw new NotImplementedException("ParseAiResponse metodunu implement et!");
+        return new TradeSignal
+        {
+            Decision = GetString(root, "decision", "IGNORE"),
+            Reason = GetString(root, "reason", ""),
+            Symbol = NormalizeSymbol(GetString(root, "symbol", "")),
+            Action = GetString(root, "action", TradeAction.IGNORE),
+            Leverage = GetInt(root, "leverage", 1),
+            MarginAmountUSDT = GetDecimal(root, "marginAmountUSDT", 0m),
+            TradeConfidence = GetInt(root, "tradeConfidence", 0),
+            SourceTxHash = sourceTxHash
+        };
+    }
+
+    private static TradeSignal Ignore(TransactionEvent transaction, string reason)
+    {
+        return new TradeSignal
+        {
+            Decision = "IGNORE",
+            Action = TradeAction.IGNORE,
+            Symbol = NormalizeSymbol(transaction.NormalizedSymbol),
+            Reason = reason,
+            SourceTxHash = transaction.TxHash
+        };
+    }
+
+    private static decimal CalculateMargin(WhaleStats whaleStats, UserStats userStats, TransactionEvent transaction)
+    {
+        if (whaleStats.TotalUsd > 0)
+        {
+            var ratio = Math.Clamp(transaction.UsdValue / whaleStats.TotalUsd, 0m, 1m);
+            return userStats.TotalUsd * ratio;
+        }
+
+        return Math.Min(userStats.TotalUsd * 0.05m, transaction.UsdValue);
+    }
+
+    private static bool IsStable(string symbol)
+    {
+        return symbol is "USDT" or "USDC" or "DAI" or "USDE" or "SUSDE";
+    }
+
+    private static string NormalizeSymbol(string symbol)
+    {
+        return symbol.ToUpperInvariant() switch
+        {
+            "WETH" => "ETH",
+            "WBTC" => "BTC",
+            "USDC" => "USDT",
+            _ => symbol.ToUpperInvariant()
+        };
+    }
+
+    private static string GetString(JsonElement root, string propertyName, string fallback)
+    {
+        return root.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? fallback
+            : fallback;
+    }
+
+    private static int GetInt(JsonElement root, string propertyName, int fallback)
+    {
+        return root.TryGetProperty(propertyName, out var value) && value.TryGetInt32(out var parsed)
+            ? parsed
+            : fallback;
+    }
+
+    private static decimal GetDecimal(JsonElement root, string propertyName, decimal fallback)
+    {
+        return root.TryGetProperty(propertyName, out var value) && value.TryGetDecimal(out var parsed)
+            ? parsed
+            : fallback;
     }
 }
