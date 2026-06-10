@@ -10,7 +10,9 @@ public class AppSettings
     public OkxSettings Okx { get; set; } = new();
     public OpenAiSettings OpenAi { get; set; } = new();
     public GroqSettings Groq { get; set; } = new();
+    public AlchemySettings Alchemy { get; set; } = new();
     public TradingSettings Trading { get; set; } = new();
+    public AuthSettings Auth { get; set; } = new();
 }
 
 public class ZerionSettings
@@ -123,5 +125,17 @@ public class TradingSettings
     /// <summary>
     /// Toz temizleme eşiği (% olarak)
     /// </summary>
-    public decimal DustThresholdPercent { get; set; } = 95m;
+    public decimal DustThresholdPercent { get; set; } = 90m;
+}
+
+public class AlchemySettings
+{
+    public string ApiKey { get; set; } = string.Empty;
+    public string Network { get; set; } = "eth-mainnet";
+}
+
+public class AuthSettings
+{
+    public string AdminUser { get; set; } = "admin";
+    public string AdminPassword { get; set; } = "admin123";
 }

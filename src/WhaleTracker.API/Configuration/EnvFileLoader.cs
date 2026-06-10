@@ -10,6 +10,8 @@ public static class EnvFileLoader
         ["GROQ_API_KEY"] = "Groq__ApiKey",
         ["GROQ_MODEL"] = "Groq__Model",
         ["GROQ_BASE_URL"] = "Groq__BaseUrl",
+        ["ALCHEMY_API_KEY"] = "Alchemy__ApiKey",
+        ["ALCHEMY_NETWORK"] = "Alchemy__Network",
         ["OPENAI_API_KEY"] = "OpenAi__ApiKey",
         ["OKX_API_KEY"] = "Okx__ApiKey",
         ["OKX_SECRET_KEY"] = "Okx__SecretKey",
