@@ -29,11 +29,8 @@ public class TradesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetTrades([FromQuery] int count = 50)
     {
-        // TODO: Son işlemleri getir
-        // var trades = await _tradeRepository.GetRecentTradeLogsAsync(count);
-        // return Ok(trades);
-
-        throw new NotImplementedException("GetTrades endpoint'ini implement et!");
+        var trades = await _tradeRepository.GetRecentTradeLogsAsync(count);
+        return Ok(trades);
     }
 
     /// <summary>
@@ -43,11 +40,13 @@ public class TradesController : ControllerBase
     [HttpGet("symbol/{symbol}")]
     public async Task<IActionResult> GetTradesBySymbol(string symbol, [FromQuery] int count = 20)
     {
-        // TODO: Sembol bazlı işlemler
-        // var trades = await _tradeRepository.GetTradeLogsBySymbolAsync(symbol, count);
-        // return Ok(trades);
+        if (string.IsNullOrWhiteSpace(symbol))
+        {
+            return BadRequest(new { error = "Symbol is required." });
+        }
 
-        throw new NotImplementedException("GetTradesBySymbol endpoint'ini implement et!");
+        var trades = await _tradeRepository.GetTradeLogsBySymbolAsync(symbol, count);
+        return Ok(trades);
     }
 
     /// <summary>
@@ -59,11 +58,13 @@ public class TradesController : ControllerBase
         [FromQuery] DateTime from,
         [FromQuery] DateTime to)
     {
-        // TODO: Tarih aralığı ile işlemler
-        // var trades = await _tradeRepository.GetTradeLogsByDateRangeAsync(from, to);
-        // return Ok(trades);
+        if (from == default || to == default)
+        {
+            return BadRequest(new { error = "Both from and to query parameters are required." });
+        }
 
-        throw new NotImplementedException("GetTradesByDateRange endpoint'ini implement et!");
+        var trades = await _tradeRepository.GetTradeLogsByDateRangeAsync(from, to);
+        return Ok(trades);
     }
 
     /// <summary>
@@ -73,8 +74,26 @@ public class TradesController : ControllerBase
     [HttpGet("stats")]
     public async Task<IActionResult> GetTradeStats()
     {
-        // TODO: İstatistikler (toplam işlem, başarı oranı, vs.)
-        
-        throw new NotImplementedException("GetTradeStats endpoint'ini implement et!");
+        var trades = await _tradeRepository.GetRecentTradeLogsAsync(1000);
+        var total = trades.Count;
+        var successful = trades.Count(x => x.IsSuccess);
+        var failed = total - successful;
+
+        return Ok(new
+        {
+            total,
+            successful,
+            failed,
+            successRate = total == 0 ? 0 : Math.Round(successful * 100m / total, 2),
+            symbols = trades
+                .GroupBy(x => x.Symbol)
+                .Select(g => new
+                {
+                    symbol = g.Key,
+                    count = g.Count(),
+                    successful = g.Count(x => x.IsSuccess)
+                })
+                .OrderByDescending(x => x.count)
+        });
     }
 }

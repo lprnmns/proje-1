@@ -10,6 +10,7 @@ namespace WhaleTracker.Data.Repositories;
 public class TradeRepository : ITradeRepository
 {
     private readonly WhaleTrackerDbContext _context;
+    private const int MaxQueryCount = 1000;
 
     public TradeRepository(WhaleTrackerDbContext context)
     {
@@ -22,39 +23,53 @@ public class TradeRepository : ITradeRepository
 
     public async Task<TradeLogEntity> SaveTradeLogAsync(TradeLogEntity log)
     {
-        // TODO: Burada işlem logu kaydetme kodunu yaz
-        // Örnek:
-        // _context.TradeLogs.Add(log);
-        // await _context.SaveChangesAsync();
-        // return log;
+        if (log.CreatedAt == default)
+        {
+            log.CreatedAt = DateTime.UtcNow;
+        }
 
-        throw new NotImplementedException("SaveTradeLogAsync metodunu implement et!");
+        _context.TradeLogs.Add(log);
+        await _context.SaveChangesAsync();
+        return log;
     }
 
     public async Task<List<TradeLogEntity>> GetRecentTradeLogsAsync(int count = 50)
     {
-        // TODO: Son N işlem logunu getir
-        // Örnek:
-        // return await _context.TradeLogs
-        //     .OrderByDescending(x => x.CreatedAt)
-        //     .Take(count)
-        //     .ToListAsync();
+        count = NormalizeCount(count);
 
-        throw new NotImplementedException("GetRecentTradeLogsAsync metodunu implement et!");
+        return await _context.TradeLogs
+            .AsNoTracking()
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(count)
+            .ToListAsync();
     }
 
     public async Task<List<TradeLogEntity>> GetTradeLogsBySymbolAsync(string symbol, int count = 20)
     {
-        // TODO: Belirli sembol için işlem loglarını getir
-        
-        throw new NotImplementedException("GetTradeLogsBySymbolAsync metodunu implement et!");
+        count = NormalizeCount(count);
+        var normalizedSymbol = symbol.Trim().ToUpperInvariant();
+
+        return await _context.TradeLogs
+            .AsNoTracking()
+            .Where(x => x.Symbol.ToUpper() == normalizedSymbol)
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(count)
+            .ToListAsync();
     }
 
     public async Task<List<TradeLogEntity>> GetTradeLogsByDateRangeAsync(DateTime from, DateTime to)
     {
-        // TODO: Tarih aralığına göre logları getir
+        if (to < from)
+        {
+            (from, to) = (to, from);
+        }
 
-        throw new NotImplementedException("GetTradeLogsByDateRangeAsync metodunu implement et!");
+        return await _context.TradeLogs
+            .AsNoTracking()
+            .Where(x => x.CreatedAt >= from.ToUniversalTime() && x.CreatedAt <= to.ToUniversalTime())
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(MaxQueryCount)
+            .ToListAsync();
     }
 
     // ========================
@@ -63,16 +78,28 @@ public class TradeRepository : ITradeRepository
 
     public async Task SavePnlSnapshotAsync(PnlHistoryEntity pnl)
     {
-        // TODO: PnL snapshot kaydet
+        if (pnl.RecordedAt == default)
+        {
+            pnl.RecordedAt = DateTime.UtcNow;
+        }
 
-        throw new NotImplementedException("SavePnlSnapshotAsync metodunu implement et!");
+        _context.PnlHistory.Add(pnl);
+        await _context.SaveChangesAsync();
     }
 
     public async Task<List<PnlHistoryEntity>> GetPnlHistoryAsync(DateTime from, DateTime to)
     {
-        // TODO: PnL geçmişini getir
+        if (to < from)
+        {
+            (from, to) = (to, from);
+        }
 
-        throw new NotImplementedException("GetPnlHistoryAsync metodunu implement et!");
+        return await _context.PnlHistory
+            .AsNoTracking()
+            .Where(x => x.RecordedAt >= from.ToUniversalTime() && x.RecordedAt <= to.ToUniversalTime())
+            .OrderBy(x => x.RecordedAt)
+            .Take(MaxQueryCount)
+            .ToListAsync();
     }
 
     // ========================
@@ -81,19 +108,40 @@ public class TradeRepository : ITradeRepository
 
     public async Task<bool> IsTransactionProcessedAsync(string txHash)
     {
-        // TODO: Transaction daha önce işlendi mi kontrol et
-        // Örnek:
-        // return await _context.ProcessedTransactions
-        //     .AnyAsync(x => x.TxHash == txHash);
+        if (string.IsNullOrWhiteSpace(txHash))
+        {
+            return false;
+        }
 
-        throw new NotImplementedException("IsTransactionProcessedAsync metodunu implement et!");
+        return await _context.ProcessedTransactions
+            .AsNoTracking()
+            .AnyAsync(x => x.TxHash == txHash);
     }
 
     public async Task MarkTransactionProcessedAsync(string txHash, bool wasTraded)
     {
-        // TODO: Transaction'ı işlendi olarak kaydet
+        if (string.IsNullOrWhiteSpace(txHash))
+        {
+            return;
+        }
 
-        throw new NotImplementedException("MarkTransactionProcessedAsync metodunu implement et!");
+        var existing = await _context.ProcessedTransactions.FindAsync(txHash);
+        if (existing == null)
+        {
+            _context.ProcessedTransactions.Add(new ProcessedTransactionEntity
+            {
+                TxHash = txHash,
+                ProcessedAt = DateTime.UtcNow,
+                WasTraded = wasTraded
+            });
+        }
+        else
+        {
+            existing.ProcessedAt = DateTime.UtcNow;
+            existing.WasTraded = wasTraded;
+        }
+
+        await _context.SaveChangesAsync();
     }
 
     // ========================
@@ -102,15 +150,28 @@ public class TradeRepository : ITradeRepository
 
     public async Task SavePositionSnapshotAsync(PositionSnapshotEntity snapshot)
     {
-        // TODO: Pozisyon snapshot kaydet
+        if (snapshot.SnapshotTime == default)
+        {
+            snapshot.SnapshotTime = DateTime.UtcNow;
+        }
 
-        throw new NotImplementedException("SavePositionSnapshotAsync metodunu implement et!");
+        _context.PositionSnapshots.Add(snapshot);
+        await _context.SaveChangesAsync();
     }
 
     public async Task<List<PositionSnapshotEntity>> GetRecentPositionSnapshotsAsync(int count = 100)
     {
-        // TODO: Son pozisyon snapshot'larını getir
+        count = NormalizeCount(count);
 
-        throw new NotImplementedException("GetRecentPositionSnapshotsAsync metodunu implement et!");
+        return await _context.PositionSnapshots
+            .AsNoTracking()
+            .OrderByDescending(x => x.SnapshotTime)
+            .Take(count)
+            .ToListAsync();
+    }
+
+    private static int NormalizeCount(int count)
+    {
+        return Math.Clamp(count, 1, MaxQueryCount);
     }
 }
