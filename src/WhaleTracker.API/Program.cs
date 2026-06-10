@@ -92,16 +92,23 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // ================================================================
-// VERİTABANI MİGRASYONU (Otomatik tablo oluşturma)
+// VERİTABANI BAŞLATMA
 // ================================================================
-// TODO: PostgreSQL Docker çalışırken aktif et
-// using (var scope = app.Services.CreateScope())
-// {
-//     var db = scope.ServiceProvider.GetRequiredService<WhaleTrackerDbContext>();
-//     
-//     // Veritabanı yoksa oluştur ve migration uygula
-//     db.Database.EnsureCreated();
-// }
+var appSettings = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<AppSettings>>().Value;
+if (appSettings.Database.AutoEnsureCreated)
+{
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WhaleTrackerDbContext>();
+        db.Database.EnsureCreated();
+        app.Logger.LogInformation("Database schema ensured.");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Database schema could not be ensured. Continuing without database bootstrap.");
+    }
+}
 
 // ================================================================
 // MIDDLEWARE PİPELİNE

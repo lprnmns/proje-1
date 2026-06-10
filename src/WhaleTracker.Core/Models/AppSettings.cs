@@ -14,6 +14,7 @@ public class AppSettings
     public AlchemySettings Alchemy { get; set; } = new();
     public TradingSettings Trading { get; set; } = new();
     public AuthSettings Auth { get; set; } = new();
+    public DatabaseSettings Database { get; set; } = new();
 }
 
 public class ZerionSettings
@@ -146,4 +147,9 @@ public class AuthSettings
 {
     public string AdminUser { get; set; } = "admin";
     public string AdminPassword { get; set; } = "admin123";
+}
+
+public class DatabaseSettings
+{
+    public bool AutoEnsureCreated { get; set; } = true;
 }
