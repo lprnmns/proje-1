@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
 using WhaleTracker.Core.Interfaces;
 using WhaleTracker.Core.Models;
+using WhaleTracker.Data;
 using WhaleTracker.Data.Entities;
 using WhaleTracker.Data.Repositories;
 
@@ -21,6 +23,7 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
     private readonly IAIService _aiService;
     private readonly IWalletActivityService _walletActivityService;
     private readonly ITradeRepository _tradeRepository;
+    private readonly WhaleTrackerDbContext _db;
     private readonly ILogger<WhaleTrackerService> _logger;
     private readonly AppSettings _settings;
 
@@ -30,6 +33,7 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
         IAIService aiService,
         IWalletActivityService walletActivityService,
         ITradeRepository tradeRepository,
+        WhaleTrackerDbContext db,
         ILogger<WhaleTrackerService> logger,
         IOptions<AppSettings> settings)
     {
@@ -38,6 +42,7 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
         _aiService = aiService;
         _walletActivityService = walletActivityService;
         _tradeRepository = tradeRepository;
+        _db = db;
         _logger = logger;
         _settings = settings.Value;
     }
@@ -74,56 +79,124 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
     /// </summary>
     public async Task ScanAndProcessAsync()
     {
-        if (string.IsNullOrWhiteSpace(_settings.Zerion.WhaleAddress))
+        var walletAddresses = await GetActiveWalletAddressesAsync();
+        if (walletAddresses.Count == 0)
         {
-            _logger.LogWarning("Zerion:WhaleAddress boş. Tarama atlandı.");
+            _logger.LogWarning("Takip edilecek aktif cüzdan yok. Tarama atlandı.");
             return;
         }
 
-        List<TransactionEvent> transactions;
-        try
+        foreach (var walletAddress in walletAddresses)
         {
-            transactions = await _zerionService.GetRecentTransactionsAsync(
-                _settings.Zerion.WhaleAddress,
-                limit: 10);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Zerion transaction polling failed. Falling back to Alchemy transfers.");
-            transactions = await _walletActivityService.GetRecentTokenMovementsAsync(
-                _settings.Zerion.WhaleAddress,
-                limit: 10);
-        }
-
-        foreach (var transaction in transactions.OrderBy(x => x.BlockTimestamp))
-        {
-            if (string.IsNullOrWhiteSpace(transaction.TxHash))
+            List<TransactionEvent> transactions;
+            try
             {
-                continue;
+                transactions = await _zerionService.GetRecentTransactionsAsync(
+                    walletAddress,
+                    limit: 10);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Zerion transaction polling failed for {Wallet}. Falling back to Alchemy transfers.", walletAddress);
+                transactions = await _walletActivityService.GetRecentTokenMovementsAsync(
+                    walletAddress,
+                    limit: 10);
             }
 
-            if (await _tradeRepository.IsTransactionProcessedAsync(transaction.TxHash))
+            var newestTransaction = transactions
+                .Where(x => !string.IsNullOrWhiteSpace(x.TxHash))
+                .OrderByDescending(x => x.BlockTimestamp)
+                .FirstOrDefault();
+
+            foreach (var transaction in transactions.OrderBy(x => x.BlockTimestamp))
             {
-                continue;
+                if (string.IsNullOrWhiteSpace(transaction.TxHash))
+                {
+                    continue;
+                }
+
+                if (await _tradeRepository.IsTransactionProcessedAsync(transaction.TxHash))
+                {
+                    continue;
+                }
+
+                var signal = await ProcessTransactionAsync(transaction, walletAddress);
+                await _tradeRepository.MarkTransactionProcessedAsync(
+                    transaction.TxHash,
+                    string.Equals(signal.Decision, "TRADE", StringComparison.OrdinalIgnoreCase));
             }
 
-            var signal = await ProcessTransactionAsync(transaction);
-            await _tradeRepository.MarkTransactionProcessedAsync(
-                transaction.TxHash,
-                string.Equals(signal.Decision, "TRADE", StringComparison.OrdinalIgnoreCase));
+            await MarkWalletCheckedAsync(walletAddress, newestTransaction?.TxHash);
         }
     }
 
-    /// <summary>
-    /// Tek bir işlemi işle
-    /// </summary>
-    public async Task<TradeSignal> ProcessTransactionAsync(TransactionEvent transaction)
+    private async Task<List<string>> GetActiveWalletAddressesAsync()
+    {
+        var trackedWallets = await _db.TrackedWallets
+            .AsNoTracking()
+            .Where(x => x.IsActive)
+            .OrderByDescending(x => x.ConfidenceScore)
+            .Select(x => x.WalletAddress)
+            .ToListAsync();
+
+        if (trackedWallets.Count > 0)
+        {
+            return trackedWallets
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        if (string.IsNullOrWhiteSpace(_settings.Zerion.WhaleAddress))
+        {
+            return new List<string>();
+        }
+
+        return new List<string> { _settings.Zerion.WhaleAddress.Trim().ToLowerInvariant() };
+    }
+
+    private async Task MarkWalletCheckedAsync(string walletAddress, string? txHash)
+    {
+        var normalized = walletAddress.Trim().ToLowerInvariant();
+        var trackedWallet = await _db.TrackedWallets
+            .FirstOrDefaultAsync(x => x.WalletAddress == normalized);
+
+        if (trackedWallet == null)
+        {
+            return;
+        }
+
+        trackedWallet.LastCheckedAt = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(txHash))
+        {
+            trackedWallet.LastSeenTxHash = txHash;
+        }
+
+        trackedWallet.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+    }
+
+    private Task<TradeSignal> ProcessTransactionAsync(TransactionEvent transaction, string walletAddress)
+    {
+        if (string.IsNullOrWhiteSpace(walletAddress))
+        {
+            walletAddress = _settings.Zerion.WhaleAddress;
+        }
+
+        return ProcessTransactionInternalAsync(transaction, walletAddress);
+    }
+
+    public Task<TradeSignal> ProcessTransactionAsync(TransactionEvent transaction)
+    {
+        return ProcessTransactionInternalAsync(transaction, _settings.Zerion.WhaleAddress);
+    }
+
+    private async Task<TradeSignal> ProcessTransactionInternalAsync(TransactionEvent transaction, string whaleAddress)
     {
         _logger.LogInformation(
             "ProcessTransactionAsync çağrıldı: {TxHash}",
             transaction.TxHash);
 
-        var whaleAddress = _settings.Zerion.WhaleAddress;
         var whaleStats = new WhaleStats();
         if (!string.IsNullOrWhiteSpace(whaleAddress))
         {
@@ -133,7 +206,7 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Zerion portfolio fetch failed. Continuing with empty whale portfolio context.");
+                _logger.LogWarning(ex, "Zerion portfolio fetch failed for {Wallet}. Continuing with empty whale portfolio context.", whaleAddress);
             }
         }
 

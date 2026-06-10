@@ -38,6 +38,8 @@ public class WhaleTrackerDbContext : DbContext
 
     public DbSet<InsiderCandidateEntity> InsiderCandidates => Set<InsiderCandidateEntity>();
 
+    public DbSet<TrackedWalletEntity> TrackedWallets => Set<TrackedWalletEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -84,6 +86,14 @@ public class WhaleTrackerDbContext : DbContext
             entity.HasIndex(e => e.WalletAddress);
             entity.HasIndex(e => e.InsiderScore);
             entity.HasIndex(e => e.EstimatedProfitUsd);
+        });
+
+        modelBuilder.Entity<TrackedWalletEntity>(entity =>
+        {
+            entity.HasIndex(e => e.WalletAddress).IsUnique();
+            entity.HasIndex(e => e.IsActive);
+            entity.HasIndex(e => e.ConfidenceScore);
+            entity.HasIndex(e => e.InsiderCandidateId);
         });
     }
 }
