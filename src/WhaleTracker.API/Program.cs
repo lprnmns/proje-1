@@ -36,6 +36,7 @@ builder.Services.AddHttpClient<IOkxService, OkxService>();
 builder.Services.AddHttpClient<IDecisionEngine, DecisionEngine>();
 builder.Services.AddHttpClient<IAIService, GroqService>();
 builder.Services.AddHttpClient<IHistoricalSwapScanner, EtherscanUniswapV3Scanner>();
+builder.Services.AddHttpClient<IWalletActivityService, AlchemyWalletActivityService>();
 
 // ================================================================
 // SERVİSLER

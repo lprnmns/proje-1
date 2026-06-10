@@ -19,6 +19,7 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
     private readonly IZerionService _zerionService;
     private readonly IOkxService _okxService;
     private readonly IAIService _aiService;
+    private readonly IWalletActivityService _walletActivityService;
     private readonly ITradeRepository _tradeRepository;
     private readonly ILogger<WhaleTrackerService> _logger;
     private readonly AppSettings _settings;
@@ -27,6 +28,7 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
         IZerionService zerionService,
         IOkxService okxService,
         IAIService aiService,
+        IWalletActivityService walletActivityService,
         ITradeRepository tradeRepository,
         ILogger<WhaleTrackerService> logger,
         IOptions<AppSettings> settings)
@@ -34,6 +36,7 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
         _zerionService = zerionService;
         _okxService = okxService;
         _aiService = aiService;
+        _walletActivityService = walletActivityService;
         _tradeRepository = tradeRepository;
         _logger = logger;
         _settings = settings.Value;
@@ -77,9 +80,20 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
             return;
         }
 
-        var transactions = await _zerionService.GetRecentTransactionsAsync(
-            _settings.Zerion.WhaleAddress,
-            limit: 10);
+        List<TransactionEvent> transactions;
+        try
+        {
+            transactions = await _zerionService.GetRecentTransactionsAsync(
+                _settings.Zerion.WhaleAddress,
+                limit: 10);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Zerion transaction polling failed. Falling back to Alchemy transfers.");
+            transactions = await _walletActivityService.GetRecentTokenMovementsAsync(
+                _settings.Zerion.WhaleAddress,
+                limit: 10);
+        }
 
         foreach (var transaction in transactions.OrderBy(x => x.BlockTimestamp))
         {
@@ -110,9 +124,18 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
             transaction.TxHash);
 
         var whaleAddress = _settings.Zerion.WhaleAddress;
-        var whaleStats = string.IsNullOrWhiteSpace(whaleAddress)
-            ? new WhaleStats()
-            : await _zerionService.GetWalletPortfolioAsync(whaleAddress);
+        var whaleStats = new WhaleStats();
+        if (!string.IsNullOrWhiteSpace(whaleAddress))
+        {
+            try
+            {
+                whaleStats = await _zerionService.GetWalletPortfolioAsync(whaleAddress);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Zerion portfolio fetch failed. Continuing with empty whale portfolio context.");
+            }
+        }
 
         var userStats = await _okxService.GetAccountInfoAsync();
         var aiDecision = await _aiService.AnalyzeMovementAsync(BuildAiContext(whaleStats, userStats, transaction));
