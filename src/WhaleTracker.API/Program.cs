@@ -11,6 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 EnvFileLoader.LoadNearest(builder.Environment.ContentRootPath);
 builder.Configuration.AddEnvironmentVariables();
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 
 // ================================================================
 // YAPILANDIRMA (appsettings.json'dan okur)

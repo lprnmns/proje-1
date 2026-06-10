@@ -26,6 +26,34 @@ public class EtherscanUniswapV3Scanner : IHistoricalSwapScanner
             Token0Symbol: "WETH",
             Token0Decimals: 18,
             Token1Symbol: "USDT",
+            Token1Decimals: 6),
+        new PoolDefinition(
+            Name: "WBTC_USDC_0.3",
+            Address: "0x99ac8cA7087fA4A2A1FB6357269965A2014ABc35",
+            Token0Symbol: "WBTC",
+            Token0Decimals: 8,
+            Token1Symbol: "USDC",
+            Token1Decimals: 6),
+        new PoolDefinition(
+            Name: "WBTC_USDT_0.3",
+            Address: "0x9db9e0e53058c89e5b94e29621a205198648425b",
+            Token0Symbol: "WBTC",
+            Token0Decimals: 8,
+            Token1Symbol: "USDT",
+            Token1Decimals: 6),
+        new PoolDefinition(
+            Name: "WBTC_USDT_0.05",
+            Address: "0x56534741CD8B152df6d48AdF7ac51f75169A83b2",
+            Token0Symbol: "WBTC",
+            Token0Decimals: 8,
+            Token1Symbol: "USDT",
+            Token1Decimals: 6),
+        new PoolDefinition(
+            Name: "LINK_USDC_0.3",
+            Address: "0xfad57d2039c21811c8f2b5d5b65308aa99d31559",
+            Token0Symbol: "LINK",
+            Token0Decimals: 18,
+            Token1Symbol: "USDC",
             Token1Decimals: 6)
     };
 
