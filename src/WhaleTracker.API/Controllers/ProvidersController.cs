@@ -128,7 +128,8 @@ public class ProvidersController : ControllerBase
 
         try
         {
-            var address = string.IsNullOrWhiteSpace(_settings.Zerion.WhaleAddress)
+            var address = string.IsNullOrWhiteSpace(_settings.Zerion.WhaleAddress) ||
+                          _settings.Zerion.WhaleAddress.Contains("BALINA", StringComparison.OrdinalIgnoreCase)
                 ? "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
                 : _settings.Zerion.WhaleAddress;
 

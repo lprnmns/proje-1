@@ -20,7 +20,7 @@ public class ZerionService : IZerionService
     private readonly ILogger<ZerionService> _logger;
     private readonly ZerionSettings _settings;
 
-    private const string BASE_URL = "https://api.zerion.io/v1";
+    private const string BASE_URL = "https://api.zerion.io/v1/";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -127,7 +127,7 @@ public class ZerionService : IZerionService
     /// </summary>
     private async Task<string> GetJsonAsync(string requestUri)
     {
-        var response = await _httpClient.GetAsync(requestUri);
+        var response = await _httpClient.GetAsync(requestUri.TrimStart('/'));
         var json = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode)
