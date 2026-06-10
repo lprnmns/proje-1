@@ -7,6 +7,7 @@ namespace WhaleTracker.Core.Models;
 public class AppSettings
 {
     public ZerionSettings Zerion { get; set; } = new();
+    public EtherscanSettings Etherscan { get; set; } = new();
     public OkxSettings Okx { get; set; } = new();
     public OpenAiSettings OpenAi { get; set; } = new();
     public GroqSettings Groq { get; set; } = new();
@@ -126,6 +127,13 @@ public class TradingSettings
     /// Toz temizleme eşiği (% olarak)
     /// </summary>
     public decimal DustThresholdPercent { get; set; } = 90m;
+}
+
+public class EtherscanSettings
+{
+    public string ApiKey { get; set; } = string.Empty;
+    public string BaseUrl { get; set; } = "https://api.etherscan.io/v2/api";
+    public string ChainId { get; set; } = "1";
 }
 
 public class AlchemySettings

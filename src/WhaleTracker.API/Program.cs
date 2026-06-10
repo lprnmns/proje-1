@@ -35,6 +35,7 @@ builder.Services.AddHttpClient<IZerionService, ZerionService>();
 builder.Services.AddHttpClient<IOkxService, OkxService>();
 builder.Services.AddHttpClient<IDecisionEngine, DecisionEngine>();
 builder.Services.AddHttpClient<IAIService, GroqService>();
+builder.Services.AddHttpClient<IHistoricalSwapScanner, EtherscanUniswapV3Scanner>();
 
 // ================================================================
 // SERVİSLER

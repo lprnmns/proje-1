@@ -7,6 +7,7 @@ public static class EnvFileLoader
         ["POSTGRES_CONNECTION"] = "ConnectionStrings__DefaultConnection",
         ["ZERION_API_KEY"] = "Zerion__ApiKey",
         ["ZERION_WHALE_ADDRESS"] = "Zerion__WhaleAddress",
+        ["ETHERSCAN_API_KEY"] = "Etherscan__ApiKey",
         ["GROQ_API_KEY"] = "Groq__ApiKey",
         ["GROQ_MODEL"] = "Groq__Model",
         ["GROQ_BASE_URL"] = "Groq__BaseUrl",
@@ -25,17 +26,22 @@ public static class EnvFileLoader
     public static void LoadNearest(string startDirectory)
     {
         var directory = new DirectoryInfo(startDirectory);
+        var envFiles = new Stack<string>();
 
         while (directory != null)
         {
             var path = Path.Combine(directory.FullName, ".env");
             if (File.Exists(path))
             {
-                Load(path);
-                return;
+                envFiles.Push(path);
             }
 
             directory = directory.Parent;
+        }
+
+        while (envFiles.Count > 0)
+        {
+            Load(envFiles.Pop());
         }
     }
 
