@@ -40,6 +40,7 @@ builder.Services.AddHttpClient<IAIService, GroqService>();
 // SERVİSLER
 // ================================================================
 builder.Services.AddScoped<IWhaleTrackerService, WhaleTrackerService>();
+builder.Services.AddScoped<IInsiderDetectionService, InsiderDetectionService>();
 
 // ================================================================
 // AUTH (Cookie)
