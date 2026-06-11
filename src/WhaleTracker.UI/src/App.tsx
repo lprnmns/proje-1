@@ -382,14 +382,18 @@ function App() {
 
       const mark = new SpriteText('AI')
       mark.color = '#ecfeff'
-      mark.textHeight = 6
-      mark.position.set(0, 0.08, 4.75)
+      mark.textHeight = 4.4
+      mark.position.set(0, -8.2, 0)
+      mark.material.depthTest = false
+      mark.renderOrder = 20
       group.add(mark)
 
       const label = new SpriteText('AI CORE')
       label.color = '#a5f3fc'
-      label.textHeight = 3.1
-      label.position.y = 10.8
+      label.textHeight = 2.45
+      label.position.y = 9.5
+      label.material.depthTest = false
+      label.renderOrder = 20
       group.add(label)
       return group
     }
@@ -426,14 +430,18 @@ function App() {
 
       const mark = new SpriteText('OKX')
       mark.color = '#ffffff'
-      mark.textHeight = 4.8
-      mark.position.set(6.25, 0.02, 0.45)
+      mark.textHeight = 4.2
+      mark.position.set(-1.2, -7.35, 0.45)
+      mark.material.depthTest = false
+      mark.renderOrder = 20
       group.add(mark)
 
       const label = new SpriteText(formatUsd(operations?.okx?.totalUsd))
       label.color = '#fed7aa'
-      label.textHeight = 2.65
-      label.position.set(1.75, -7.05, 0)
+      label.textHeight = 2.45
+      label.position.set(-1.2, -10.35, 0.45)
+      label.material.depthTest = false
+      label.renderOrder = 20
       group.add(label)
       return group
     }
