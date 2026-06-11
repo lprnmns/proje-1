@@ -101,6 +101,8 @@ type GraphNode = {
   z?: number
   wallet?: Wallet
   event?: LiveEvent
+  flowCreatedAt?: number
+  flowExpiresAt?: number
 }
 
 type GraphLink = {
@@ -108,6 +110,8 @@ type GraphLink = {
   target: string
   color: string
   particles: number
+  flowCreatedAt?: number
+  flowExpiresAt?: number
 }
 
 type Tab = 'events' | 'wallets' | 'insider' | 'chat'
@@ -129,7 +133,54 @@ type ChatLine = {
   meta?: ChatAiMeta
 }
 
-const tradeEventTypes = new Set(['TradeSubmitted', 'TradeRejected'])
+const FLOW_LIFETIME_MS = 120_000
+const FLOW_FADE_START_MS = 60_000
+const animatedEventTypes = new Set(['WalletActivityDetected', 'AiDecisionCompleted', 'TradeSubmitted', 'TradeRejected', 'TradeSkipped'])
+
+function isSkippedTrade(event: LiveEvent) {
+  if (event.type === 'TradeSkipped') return true
+  if (event.type !== 'TradeRejected') return false
+  const payload = parsePayload(event)
+  return event.summary.toLowerCase().startsWith('trade skipped:') ||
+    String(payload?.decision || '').toUpperCase() === 'IGNORE'
+}
+
+function isManualExecutionProbe(event: LiveEvent) {
+  return parsePayload(event)?.mode === 'live-execution-probe'
+}
+
+function eventStepLabel(event: LiveEvent) {
+  const payload = parsePayload(event)
+  if (event.type === 'WalletActivityDetected') {
+    return `${event.symbol || 'Wallet'} movement ${formatUsd(event.usdValue)}`
+  }
+  if (event.type === 'AiDecisionCompleted') {
+    const decision = payload?.decision || payload?.action || 'Decision'
+    return `AI: ${decision} ${event.symbol || ''}`.trim()
+  }
+  if (event.type === 'TradeSubmitted') {
+    return `OKX accepted ${event.symbol || ''}`.trim()
+  }
+  if (event.type === 'TradeRejected') {
+    const request = payload?.request
+    return request
+      ? `OKX rejected ${request.side || ''} ${request.symbol || event.symbol || ''}`.trim()
+      : `OKX rejected ${event.symbol || ''}`.trim()
+  }
+  if (event.type === 'TradeSkipped') {
+    return `No trade: ${event.symbol || 'ignored'}`
+  }
+  return event.type
+}
+
+function flowOpacity(createdAt?: number, expiresAt?: number) {
+  if (!createdAt || !expiresAt) return 0.42
+  const now = Date.now()
+  if (now >= expiresAt) return 0
+  const age = now - createdAt
+  if (age <= FLOW_FADE_START_MS) return 0.72
+  return Math.max(0, 0.72 * (expiresAt - now) / (FLOW_LIFETIME_MS - FLOW_FADE_START_MS))
+}
 
 async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(url, {
@@ -338,6 +389,23 @@ function App() {
         if (orbitC) orbitC.rotation.y = elapsed * 0.24
       }
 
+      graphRef.current?.scene()?.traverse((object: THREE.Object3D) => {
+        const createdAt = Number(object.userData?.flowCreatedAt || 0)
+        const expiresAt = Number(object.userData?.flowExpiresAt || 0)
+        if (!createdAt || !expiresAt) return
+
+        const opacity = flowOpacity(createdAt, expiresAt) / 0.72
+        object.visible = opacity > 0
+        object.traverse((child: THREE.Object3D) => {
+          const material = (child as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined
+          const materials = Array.isArray(material) ? material : material ? [material] : []
+          materials.forEach((item) => {
+            item.transparent = true
+            item.opacity = opacity
+          })
+        })
+      })
+
       animationFrame = requestAnimationFrame(animateAiCore)
     }
 
@@ -347,9 +415,12 @@ function App() {
 
   useEffect(() => {
     const now = Date.now()
-    const nextExpiry = events
-      .map((event) => new Date(event.createdAt).getTime() + 12_000)
-      .filter((expiresAt) => expiresAt > now)
+    const transitions = events.flatMap((event) => {
+      const createdAt = new Date(event.createdAt).getTime()
+      return [createdAt + 12_000, createdAt + FLOW_LIFETIME_MS]
+    })
+    const nextExpiry = transitions
+      .filter((transitionAt) => transitionAt > now)
       .sort((a, b) => a - b)[0]
 
     if (!nextExpiry) return
@@ -430,6 +501,7 @@ function App() {
   const graphData = useMemo(() => {
     const nodes = new Map<string, GraphNode>()
     const links: GraphLink[] = []
+    const now = Date.now()
 
     nodes.set('ai', {
       id: 'ai',
@@ -457,28 +529,89 @@ function App() {
         size: 6 + Math.min(10, Number(wallet.confidenceScore || 0) / 10),
         wallet,
       })
-      links.push({ source: id, target: 'ai', color: wallet.isActive ? '#7dd3fc' : '#475569', particles: 0 })
     })
 
-    events.slice(0, 40).forEach((event) => {
-      const isFreshEvent = Date.now() - new Date(event.createdAt).getTime() <= 12_000
-      const eventId = `event:${event.id}`
-      nodes.set(eventId, {
-        id: eventId,
-        name: event.type,
-        kind: 'event',
-        color: event.severity === 'danger' ? '#ef4444' : event.severity === 'success' ? '#22c55e' : '#facc15',
-        size: 4 + Math.min(8, Number(event.usdValue || 0) / 25000),
-        event,
-      })
+    const flows = new Map<string, LiveEvent[]>()
+    events.forEach((event) => {
+      if (!animatedEventTypes.has(event.type) && event.type !== 'AiAwakened') return
+      const key = isManualExecutionProbe(event)
+        ? `probe:${event.id}`
+        : event.txHash
+        ? `${event.walletAddress.toLowerCase()}:${event.txHash.toLowerCase()}`
+        : `event:${event.id}`
+      flows.set(key, [...(flows.get(key) || []), event])
+    })
 
-      const walletId = `wallet:${event.walletAddress}`
-      if (event.walletAddress && nodes.has(walletId)) {
-        links.push({ source: walletId, target: eventId, color: '#38bdf8', particles: isFreshEvent ? 2 : 0 })
+    flows.forEach((flowEvents) => {
+      const ordered = flowEvents.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      const visibleSteps = ordered.filter((event) => event.type !== 'AiAwakened')
+      const latestAt = Math.max(...ordered.map((event) => new Date(event.createdAt).getTime()))
+      const flowExpiresAt = latestAt + FLOW_LIFETIME_MS
+      if (flowExpiresAt <= now) return
+
+      const flowCreatedAt = Math.min(...ordered.map((event) => new Date(event.createdAt).getTime()))
+      const activity = visibleSteps.find((event) => event.type === 'WalletActivityDetected')
+      const decision = [...visibleSteps].reverse().find((event) => event.type === 'AiDecisionCompleted')
+      const execution = [...visibleSteps].reverse().find((event) =>
+        event.type === 'TradeSubmitted' || (event.type === 'TradeRejected' && !isSkippedTrade(event)))
+      const manualProbe = execution ? isManualExecutionProbe(execution) : false
+      const skipped = [...visibleSteps].reverse().find((event) => isSkippedTrade(event))
+      const walletAddress = ordered.find((event) => event.walletAddress)?.walletAddress || ''
+      const walletId = `wallet:${walletAddress}`
+      let previousId = nodes.has(walletId) ? walletId : ''
+
+      const addStep = (event: LiveEvent, color: string) => {
+        const eventId = `event:${event.id}`
+        const isFresh = now - new Date(event.createdAt).getTime() <= 12_000
+        nodes.set(eventId, {
+          id: eventId,
+          name: eventStepLabel(event),
+          kind: 'event',
+          color,
+          size: 4 + Math.min(8, Number(event.usdValue || 0) / 25000),
+          event,
+          flowCreatedAt,
+          flowExpiresAt,
+        })
+        if (previousId) {
+          links.push({
+            source: previousId,
+            target: eventId,
+            color,
+            particles: isFresh ? 3 : 0,
+            flowCreatedAt,
+            flowExpiresAt,
+          })
+        }
+        previousId = eventId
       }
-      links.push({ source: eventId, target: 'ai', color: '#facc15', particles: isFreshEvent ? 4 : 0 })
-      if (tradeEventTypes.has(event.type)) {
-        links.push({ source: 'ai', target: 'okx', color: event.severity === 'success' ? '#22c55e' : '#ef4444', particles: isFreshEvent ? 5 : 0 })
+
+      if (activity) addStep(activity, '#38bdf8')
+      if (!manualProbe && previousId) {
+        links.push({
+          source: previousId,
+          target: 'ai',
+          color: '#67e8f9',
+          particles: now - latestAt <= 12_000 ? 4 : 0,
+          flowCreatedAt,
+          flowExpiresAt,
+        })
+      }
+      if (!manualProbe) {
+        previousId = 'ai'
+        if (decision) addStep(decision, '#facc15')
+        if (skipped) addStep(skipped, '#94a3b8')
+      }
+      if (execution) {
+        addStep(execution, execution.type === 'TradeSubmitted' ? '#22c55e' : '#ef4444')
+        links.push({
+          source: previousId,
+          target: 'okx',
+          color: execution.type === 'TradeSubmitted' ? '#22c55e' : '#ef4444',
+          particles: now - new Date(execution.createdAt).getTime() <= 12_000 ? 5 : 0,
+          flowCreatedAt,
+          flowExpiresAt,
+        })
       }
     })
 
@@ -587,6 +720,10 @@ function App() {
     label.textHeight = 2.4
     label.position.y = node.size / 3 + 3
     group.add(label)
+    if (node.flowCreatedAt && node.flowExpiresAt) {
+      group.userData.flowCreatedAt = node.flowCreatedAt
+      group.userData.flowExpiresAt = node.flowExpiresAt
+    }
     return group
   }, [operations?.okx?.totalUsd])
 
@@ -686,7 +823,7 @@ function App() {
             nodeThreeObject={nodeThreeObject}
             nodeRelSize={4}
             linkColor={(link: GraphLink) => link.color}
-            linkOpacity={0.42}
+            linkOpacity={(link: GraphLink) => flowOpacity(link.flowCreatedAt, link.flowExpiresAt)}
             linkWidth={1.2}
             linkDirectionalParticles={(link: GraphLink) => link.particles}
             linkDirectionalParticleSpeed={0.012}

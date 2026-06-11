@@ -7,6 +7,7 @@ public static class LiveEventTypes
     public const string AiDecisionCompleted = "AiDecisionCompleted";
     public const string TradeSubmitted = "TradeSubmitted";
     public const string TradeRejected = "TradeRejected";
+    public const string TradeSkipped = "TradeSkipped";
     public const string BiasUpdated = "BiasUpdated";
     public const string ProviderHealthChanged = "ProviderHealthChanged";
 }

@@ -336,7 +336,7 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
         else if (string.Equals(signal.Decision, "TRADE", StringComparison.OrdinalIgnoreCase))
         {
             await _liveEvents.PublishAsync(
-                LiveEventTypes.TradeRejected,
+                LiveEventTypes.TradeSkipped,
                 "Trade skipped: auto trading is disabled.",
                 whaleAddress,
                 transaction.TxHash,
@@ -354,7 +354,7 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
         else
         {
             await _liveEvents.PublishAsync(
-                LiveEventTypes.TradeRejected,
+                LiveEventTypes.TradeSkipped,
                 $"Trade skipped: {signal.Reason}",
                 whaleAddress,
                 transaction.TxHash,
