@@ -1,11 +1,14 @@
 using System.Globalization;
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using WhaleTracker.Core.Interfaces;
 using WhaleTracker.Core.Models;
+using WhaleTracker.Data;
 
 namespace WhaleTracker.API.Controllers;
 
@@ -19,19 +22,24 @@ public class DashboardController : ControllerBase
     private readonly ILogger<DashboardController> _logger;
     private readonly IWebHostEnvironment _env;
     private readonly ZerionSettings _zerionSettings;
+    private readonly GroqSettings _groqSettings;
+    private readonly WhaleTrackerDbContext _db;
 
     public DashboardController(
         IOkxService okxService,
         IAIService aiService,
         ILogger<DashboardController> logger,
         IWebHostEnvironment env,
-        IOptions<AppSettings> settings)
+        IOptions<AppSettings> settings,
+        WhaleTrackerDbContext db)
     {
         _okxService = okxService;
         _aiService = aiService;
         _logger = logger;
         _env = env;
         _zerionSettings = settings.Value.Zerion;
+        _groqSettings = settings.Value.Groq;
+        _db = db;
     }
 
     [HttpGet("status")]
@@ -277,7 +285,46 @@ public class DashboardController : ControllerBase
     [HttpPost("chat")]
     public async Task<IActionResult> Chat([FromQuery] string? address, [FromBody] ChatRequest? request)
     {
-        var wallet = ResolveAddress(request?.Address ?? address);
+        var requestedAddress = request?.Address ?? address;
+        var sourceMode = "explicit-address";
+        string wallet;
+        if (IsValidAddress(requestedAddress))
+        {
+            wallet = ResolveAddress(requestedAddress);
+        }
+        else
+        {
+            var trackedWallet = await _db.TrackedWallets
+                .AsNoTracking()
+                .Where(x => x.IsActive)
+                .OrderByDescending(x => x.ConfidenceScore)
+                .ThenByDescending(x => x.EstimatedProfitUsd)
+                .ThenByDescending(x => x.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (trackedWallet == null)
+            {
+                return BadRequest(new
+                {
+                    message = "No active tracked wallet is available for AI chat. Add a wallet or run Insider Lab first.",
+                    ai = new
+                    {
+                        provider = "none",
+                        model = "none",
+                        mode = "blocked-no-tracked-wallet",
+                        elapsedMs = 0L,
+                        source = "tracked-wallets",
+                        sourceWallet = "",
+                        positions = 0,
+                        usedGroq = false
+                    }
+                });
+            }
+
+            wallet = trackedWallet.WalletAddress;
+            sourceMode = "tracked-wallet";
+        }
+
         var question = request?.Question?.Trim();
         if (string.IsNullOrWhiteSpace(question))
         {
@@ -309,22 +356,57 @@ public class DashboardController : ControllerBase
             {
                 wallet,
                 answer = forecast,
-                distribution
+                distribution,
+                ai = new
+                {
+                    provider = "local",
+                    model = "deterministic-percent-forecast",
+                    mode = "local-forecast",
+                    elapsedMs = 0L,
+                    source = $"{sourceMode}:zerion_latest_event_file",
+                    sourceWallet = wallet,
+                    positions = positions.Count,
+                    usedGroq = false
+                }
             });
         }
 
         var prompt = BuildWhaleChatPrompt(distributionText, cashPct, majorsPct, altPct, question);
+        var stopwatch = Stopwatch.StartNew();
         var answer = await _aiService.AskAsync(prompt);
+        stopwatch.Stop();
+        var mode = "groq";
         if (IsRefusalResponse(answer))
         {
             answer = BuildCommentary(distributionText, cashPct, majorsPct, altPct);
+            mode = "local-fallback-after-groq-refusal";
         }
+
+        _logger.LogInformation(
+            "Dashboard chat answered. Provider={Provider} Model={Model} Mode={Mode} Source={Source} Wallet={Wallet} ElapsedMs={ElapsedMs}",
+            mode == "groq" ? "groq" : "local",
+            mode == "groq" ? _groqSettings.Model : "deterministic-commentary",
+            mode,
+            $"{sourceMode}:zerion_latest_event_file",
+            wallet,
+            stopwatch.ElapsedMilliseconds);
 
         return Ok(new
         {
             wallet,
             answer,
-            distribution
+            distribution,
+            ai = new
+            {
+                provider = mode == "groq" ? "groq" : "local",
+                model = mode == "groq" ? _groqSettings.Model : "deterministic-commentary",
+                mode,
+                elapsedMs = stopwatch.ElapsedMilliseconds,
+                source = $"{sourceMode}:zerion_latest_event_file",
+                sourceWallet = wallet,
+                positions = positions.Count,
+                usedGroq = true
+            }
         });
     }
 

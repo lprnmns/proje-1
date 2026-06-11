@@ -112,6 +112,23 @@ type GraphLink = {
 
 type Tab = 'events' | 'wallets' | 'insider' | 'chat'
 
+type ChatAiMeta = {
+  provider: string
+  model: string
+  mode: string
+  elapsedMs: number
+  source: string
+  sourceWallet: string
+  positions: number
+  usedGroq: boolean
+}
+
+type ChatLine = {
+  role: 'user' | 'ai'
+  text: string
+  meta?: ChatAiMeta
+}
+
 const tradeEventTypes = new Set(['TradeSubmitted', 'TradeRejected'])
 
 async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -131,7 +148,14 @@ async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> 
 
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(text || `HTTP ${response.status}`)
+    let message = text || `HTTP ${response.status}`
+    try {
+      const payload = JSON.parse(text)
+      message = payload.message || payload.error || message
+    } catch {
+      // Keep the raw response text when the error body is not JSON.
+    }
+    throw new Error(message)
   }
 
   return response.json()
@@ -291,7 +315,8 @@ function App() {
   const [connectionState, setConnectionState] = useState('connecting')
   const [alert, setAlert] = useState('')
   const [chatQuestion, setChatQuestion] = useState('')
-  const [chatLines, setChatLines] = useState<Array<{ role: 'user' | 'ai'; text: string }>>([])
+  const [chatLines, setChatLines] = useState<ChatLine[]>([])
+  const [isChatThinking, setIsChatThinking] = useState(false)
   const [scanForm, setScanForm] = useState({
     preCrashStartUtc: '',
     preCrashEndUtc: '',
@@ -574,17 +599,20 @@ function App() {
 
   const sendChat = async () => {
     const question = chatQuestion.trim()
-    if (!question) return
+    if (!question || isChatThinking) return
     setChatQuestion('')
     setChatLines((lines) => [...lines, { role: 'user', text: question }])
+    setIsChatThinking(true)
     try {
-      const response = await fetchJson<{ answer: string }>('/api/dashboard/chat', {
+      const response = await fetchJson<{ answer: string; ai?: ChatAiMeta }>('/api/dashboard/chat', {
         method: 'POST',
         body: JSON.stringify({ question }),
       })
-      setChatLines((lines) => [...lines, { role: 'ai', text: response.answer || 'No answer.' }])
+      setChatLines((lines) => [...lines, { role: 'ai', text: response.answer || 'No answer.', meta: response.ai }])
     } catch (error) {
       setChatLines((lines) => [...lines, { role: 'ai', text: error instanceof Error ? error.message : 'AI unavailable.' }])
+    } finally {
+      setIsChatThinking(false)
     }
   }
 
@@ -775,12 +803,26 @@ function App() {
               <div className="chat-lines">
                 {chatLines.length === 0 && <p className="muted">Ask the AI about wallet bias, OKX exposure, or recent decisions.</p>}
                 {chatLines.map((line, index) => (
-                  <div key={`${line.role}-${index}`} className={`chat-line ${line.role}`}>{line.text}</div>
+                  <div key={`${line.role}-${index}`} className={`chat-line ${line.role}`}>
+                    <div>{line.text}</div>
+                    {line.meta && (
+                      <div className="chat-meta">
+                        {line.meta.provider === 'groq' ? 'Groq' : 'Local'} · {line.meta.model} · {line.meta.mode} · {line.meta.elapsedMs}ms
+                        <br />
+                        Source: {line.meta.source} · {shortAddress(line.meta.sourceWallet)} · {line.meta.positions} positions
+                      </div>
+                    )}
+                  </div>
                 ))}
+                {isChatThinking && (
+                  <div className="chat-line ai thinking">
+                    Groq llama-3.3-70b-versatile dusunuyor...
+                  </div>
+                )}
               </div>
               <div className="chat-input">
-                <input value={chatQuestion} onChange={(e) => setChatQuestion(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendChat()} placeholder="Piyasa biası ve son hareketler ne söylüyor?" />
-                <button onClick={sendChat} aria-label="Send chat"><Send size={17} /></button>
+                <input value={chatQuestion} disabled={isChatThinking} onChange={(e) => setChatQuestion(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendChat()} placeholder="Piyasa biası ve son hareketler ne söylüyor?" />
+                <button onClick={sendChat} disabled={isChatThinking} aria-label="Send chat"><Send size={17} /></button>
               </div>
             </div>
           )}

@@ -383,6 +383,18 @@ input {
   background: rgba(34, 197, 94, 0.12);
 }
 
+.chat-line.thinking {
+  color: #bae6fd;
+  border: 1px solid rgba(125, 211, 252, 0.24);
+}
+
+.chat-meta {
+  margin-top: 8px;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .chat-input {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 42px;
