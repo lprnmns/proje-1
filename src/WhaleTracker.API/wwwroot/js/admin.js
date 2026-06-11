@@ -37,6 +37,10 @@ const processManualEventBtn = document.getElementById("processManualEvent");
 const manualEventResult = document.getElementById("manualEventResult");
 const refreshProvidersBtn = document.getElementById("refreshProviders");
 const providerRows = document.getElementById("providerRows");
+const okxSymbolInput = document.getElementById("okxSymbolInput");
+const checkOkxSymbolBtn = document.getElementById("checkOkxSymbol");
+const okxSymbolStatus = document.getElementById("okxSymbolStatus");
+const okxSymbolCount = document.getElementById("okxSymbolCount");
 
 async function fetchJson(url, options = {}) {
   const headers = options.body
@@ -361,6 +365,34 @@ async function loadProviders() {
   }
 }
 
+async function checkOkxSymbol() {
+  const symbol = (okxSymbolInput?.value || "").trim();
+  if (!symbol) {
+    showAlert("Symbol is required.");
+    return;
+  }
+
+  checkOkxSymbolBtn.disabled = true;
+  okxSymbolStatus.textContent = "Checking...";
+
+  try {
+    const [result, list] = await Promise.all([
+      fetchJson(`/api/okx-instruments/symbols/${encodeURIComponent(symbol)}`),
+      fetchJson("/api/okx-instruments/symbols"),
+    ]);
+
+    okxSymbolStatus.textContent = result.supported ? "Supported" : "Not Supported";
+    okxSymbolStatus.classList.toggle("pnl-positive", result.supported);
+    okxSymbolStatus.classList.toggle("pnl-negative", !result.supported);
+    okxSymbolCount.textContent = `${list.count || 0} symbols`;
+  } catch (err) {
+    okxSymbolStatus.textContent = "Check Failed";
+    showAlert(`Symbol check failed: ${err.message}`);
+  } finally {
+    checkOkxSymbolBtn.disabled = false;
+  }
+}
+
 async function runHistoricalScan() {
   const request = {
     preCrashStartUtc: toIsoFromLocalInput("preCrashStart"),
@@ -594,6 +626,7 @@ refreshOperationsBtn?.addEventListener("click", loadOperations);
 processManualEventBtn?.addEventListener("click", processManualEvent);
 refreshProvidersBtn?.addEventListener("click", loadProviders);
 promoteCandidatesBtn?.addEventListener("click", promoteTopCandidates);
+checkOkxSymbolBtn?.addEventListener("click", checkOkxSymbol);
 
 document.addEventListener("DOMContentLoaded", () => {
   loadStatus();
@@ -603,6 +636,7 @@ document.addEventListener("DOMContentLoaded", () => {
   loadAiMemory();
   loadOperations();
   loadProviders();
+  checkOkxSymbol();
   setInterval(loadStatus, 15000);
   setInterval(loadLogs, 20000);
   setInterval(loadTrackedWallets, 30000);

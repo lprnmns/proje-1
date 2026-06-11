@@ -150,6 +150,27 @@
     <section class="card panel-card mb-4">
       <div class="card-body">
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+          <h5 class="mb-0">OKX Symbol Check</h5>
+          <span class="tag" id="okxSymbolCount">--</span>
+        </div>
+        <div class="row g-2 align-items-end">
+          <div class="col-12 col-md-4">
+            <label class="form-label">Symbol</label>
+            <input class="form-control" type="text" id="okxSymbolInput" value="ETH" />
+          </div>
+          <div class="col-12 col-md-3">
+            <button class="btn btn-outline-light w-100" id="checkOkxSymbol">Check</button>
+          </div>
+          <div class="col-12 col-md-5">
+            <div class="metric" id="okxSymbolStatus">--</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card panel-card mb-4">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
           <h5 class="mb-0">Historical Insider Scan</h5>
           <span class="tag">Etherscan + Uniswap V3</span>
         </div>
