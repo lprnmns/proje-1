@@ -3,7 +3,7 @@ import ForceGraph3D from 'react-force-graph-3d'
 import SpriteText from 'three-spritetext'
 import * as THREE from 'three'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, Stars, Text } from '@react-three/drei'
+import { OrbitControls, Stars } from '@react-three/drei'
 import { HubConnectionBuilder, HubConnectionState, LogLevel } from '@microsoft/signalr'
 import {
   Activity,
@@ -279,24 +279,6 @@ function AiCoreOrb({ bias }: { bias: string }) {
         <torusGeometry args={[1.38, 0.014, 8, 96]} />
         <meshBasicMaterial color="#e0f2fe" transparent opacity={0.46} />
       </mesh>
-      <Text
-        position={[0, 0.02, 1.35]}
-        fontSize={0.82}
-        color="#ecfeff"
-        anchorX="center"
-        anchorY="middle"
-      >
-        AI
-      </Text>
-      <Text
-        position={[0, -0.72, 1.28]}
-        fontSize={0.22}
-        color="#a5f3fc"
-        anchorX="center"
-        anchorY="middle"
-      >
-        CORE
-      </Text>
       <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.6} />
     </>
   )
@@ -304,6 +286,7 @@ function AiCoreOrb({ bias }: { bias: string }) {
 
 function App() {
   const graphRef = useRef<any>(null)
+  const aiCoreVisualRef = useRef<THREE.Group | null>(null)
   const [wallets, setWallets] = useState<Wallet[]>([])
   const [events, setEvents] = useState<LiveEvent[]>([])
   const [aiState, setAiState] = useState<AiState>({ biasScore: 0, direction: 'NEUTRAL', summary: '', eventCount: 0 })
@@ -324,6 +307,42 @@ function App() {
     dipBuyEndUtc: '',
     minimumProfitUsd: 1000,
   })
+
+  useEffect(() => {
+    let animationFrame = 0
+    const clock = new THREE.Clock()
+
+    const animateAiCore = () => {
+      const visual = aiCoreVisualRef.current
+      if (visual) {
+        const elapsed = clock.getElapsedTime()
+        const core = visual.getObjectByName('ai-core-mesh')
+        const wire = visual.getObjectByName('ai-core-wire')
+        const orbitA = visual.getObjectByName('ai-orbit-a')
+        const orbitB = visual.getObjectByName('ai-orbit-b')
+        const orbitC = visual.getObjectByName('ai-orbit-c')
+
+        if (core) {
+          core.rotation.x = 0.2 + elapsed * 0.18
+          core.rotation.y = 0.55 + elapsed * 0.34
+          const pulse = 1 + Math.sin(elapsed * 1.8) * 0.055
+          core.scale.setScalar(pulse)
+        }
+        if (wire && core) {
+          wire.rotation.copy(core.rotation)
+          wire.scale.copy(core.scale)
+        }
+        if (orbitA) orbitA.rotation.z = elapsed * 0.42
+        if (orbitB) orbitB.rotation.x = elapsed * -0.31
+        if (orbitC) orbitC.rotation.y = elapsed * 0.24
+      }
+
+      animationFrame = requestAnimationFrame(animateAiCore)
+    }
+
+    animateAiCore()
+    return () => cancelAnimationFrame(animationFrame)
+  }, [])
 
   const loadMissionState = useCallback(async () => {
     try {
@@ -461,6 +480,7 @@ function App() {
       })
       const coreGeometry = new THREE.DodecahedronGeometry(4.9, 0)
       const core = new THREE.Mesh(coreGeometry, coreMaterial)
+      core.name = 'ai-core-mesh'
       core.rotation.set(0.2, 0.55, -0.12)
       group.add(core)
 
@@ -473,6 +493,7 @@ function App() {
           opacity: 0.68,
         }),
       )
+      wire.name = 'ai-core-wire'
       wire.rotation.copy(core.rotation)
       group.add(wire)
 
@@ -491,28 +512,31 @@ function App() {
       ringA.rotation.x = Math.PI / 2.6
       ringB.rotation.y = Math.PI / 2.8
       ringC.rotation.set(Math.PI / 2.2, 0.45, 0.85)
-      group.add(ringA, ringB, ringC)
+
+      const orbitA = new THREE.Group()
+      const orbitB = new THREE.Group()
+      const orbitC = new THREE.Group()
+      orbitA.name = 'ai-orbit-a'
+      orbitB.name = 'ai-orbit-b'
+      orbitC.name = 'ai-orbit-c'
+      orbitA.add(ringA)
+      orbitB.add(ringB)
+      orbitC.add(ringC)
+      group.add(orbitA, orbitB, orbitC)
 
       const satelliteGeometry = new THREE.OctahedronGeometry(0.58, 0)
       const satelliteMaterial = new THREE.MeshBasicMaterial({ color: '#ecfeff', transparent: true, opacity: 0.86 })
-      ;[
-        [-6.9, 1.1, 0.3],
-        [5.9, -1.4, 0.8],
-        [1.3, 6.4, -0.2],
-        [-1.6, -6.1, 0.5],
-      ].forEach(([x, y, z]) => {
+      const satellites = [
+        { orbit: orbitA, position: [7.0, 0, 0] },
+        { orbit: orbitA, position: [-7.0, 0, 0] },
+        { orbit: orbitB, position: [0, 5.8, 0] },
+        { orbit: orbitC, position: [8.2, 0, 0] },
+      ] as const
+      satellites.forEach(({ orbit, position }) => {
         const satellite = new THREE.Mesh(satelliteGeometry, satelliteMaterial)
-        satellite.position.set(x, y, z)
-        group.add(satellite)
+        satellite.position.set(position[0], position[1], position[2])
+        orbit.add(satellite)
       })
-
-      const mark = new SpriteText('AI')
-      mark.color = '#ecfeff'
-      mark.textHeight = 3.4
-      mark.position.set(0, -10.4, 0)
-      mark.material.depthTest = false
-      mark.renderOrder = 20
-      group.add(mark)
 
       const label = new SpriteText('AI CORE')
       label.color = '#a5f3fc'
@@ -521,6 +545,7 @@ function App() {
       label.material.depthTest = false
       label.renderOrder = 20
       group.add(label)
+      aiCoreVisualRef.current = group
       return group
     }
 
