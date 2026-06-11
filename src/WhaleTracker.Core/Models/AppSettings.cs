@@ -15,6 +15,7 @@ public class AppSettings
     public TradingSettings Trading { get; set; } = new();
     public AuthSettings Auth { get; set; } = new();
     public DatabaseSettings Database { get; set; } = new();
+    public TelegramSettings Telegram { get; set; } = new();
 }
 
 public class ZerionSettings
@@ -152,4 +153,11 @@ public class AuthSettings
 public class DatabaseSettings
 {
     public bool AutoEnsureCreated { get; set; } = true;
+}
+
+public class TelegramSettings
+{
+    public string BotToken { get; set; } = string.Empty;
+    public string ChatId { get; set; } = string.Empty;
+    public bool Enabled { get; set; } = true;
 }

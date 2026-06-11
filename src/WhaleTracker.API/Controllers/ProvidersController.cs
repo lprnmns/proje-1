@@ -40,7 +40,8 @@ public class ProvidersController : ControllerBase
             await CheckGroqAsync(),
             await CheckOkxAsync(),
             await CheckAlchemyAsync(),
-            await CheckZerionAsync()
+            await CheckZerionAsync(),
+            CheckTelegram()
         };
 
         return Ok(new
@@ -140,6 +141,22 @@ public class ProvidersController : ControllerBase
         {
             return Failed("zerion", ex.Message);
         }
+    }
+
+    private object CheckTelegram()
+    {
+        if (!_settings.Telegram.Enabled)
+        {
+            return Failed("telegram", "disabled");
+        }
+
+        if (string.IsNullOrWhiteSpace(_settings.Telegram.BotToken) ||
+            string.IsNullOrWhiteSpace(_settings.Telegram.ChatId))
+        {
+            return Failed("telegram", "not_configured");
+        }
+
+        return Ok("telegram", new { configured = true });
     }
 
     private static object Ok(string provider, object data)

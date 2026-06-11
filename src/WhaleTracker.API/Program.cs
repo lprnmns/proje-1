@@ -13,6 +13,7 @@ EnvFileLoader.LoadNearest(builder.Environment.ContentRootPath);
 builder.Configuration.AddEnvironmentVariables();
 builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 builder.Logging.AddFilter("WhaleTracker.Infrastructure.Services.OkxService", LogLevel.Information);
+builder.Logging.AddFilter("WhaleTracker.Infrastructure.Services.GroqService", LogLevel.Information);
 
 // ================================================================
 // YAPILANDIRMA (appsettings.json'dan okur)
@@ -39,6 +40,7 @@ builder.Services.AddHttpClient<IDecisionEngine, DecisionEngine>();
 builder.Services.AddHttpClient<IAIService, GroqService>();
 builder.Services.AddHttpClient<IHistoricalSwapScanner, EtherscanUniswapV3Scanner>();
 builder.Services.AddHttpClient<IWalletActivityService, AlchemyWalletActivityService>();
+builder.Services.AddHttpClient<INotificationService, TelegramNotificationService>();
 
 // ================================================================
 // SERVİSLER

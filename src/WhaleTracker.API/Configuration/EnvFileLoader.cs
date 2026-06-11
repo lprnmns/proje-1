@@ -20,7 +20,10 @@ public static class EnvFileLoader
         ["OKX_IS_DEMO"] = "Okx__IsDemo",
         ["OKX_BASE_URL"] = "Okx__BaseUrl",
         ["ADMIN_USER"] = "Auth__AdminUser",
-        ["ADMIN_PASSWORD"] = "Auth__AdminPassword"
+        ["ADMIN_PASSWORD"] = "Auth__AdminPassword",
+        ["TELEGRAM_BOT_TOKEN"] = "Telegram__BotToken",
+        ["TELEGRAM_CHAT_ID"] = "Telegram__ChatId",
+        ["TELEGRAM_ENABLED"] = "Telegram__Enabled"
     };
 
     public static void LoadNearest(string startDirectory)

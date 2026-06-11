@@ -24,6 +24,7 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
     private readonly IWalletActivityService _walletActivityService;
     private readonly ITradeRepository _tradeRepository;
     private readonly IAiBiasMemoryService _biasMemoryService;
+    private readonly INotificationService _notificationService;
     private readonly WhaleTrackerDbContext _db;
     private readonly ILogger<WhaleTrackerService> _logger;
     private readonly AppSettings _settings;
@@ -35,6 +36,7 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
         IWalletActivityService walletActivityService,
         ITradeRepository tradeRepository,
         IAiBiasMemoryService biasMemoryService,
+        INotificationService notificationService,
         WhaleTrackerDbContext db,
         ILogger<WhaleTrackerService> logger,
         IOptions<AppSettings> settings)
@@ -45,6 +47,7 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
         _walletActivityService = walletActivityService;
         _tradeRepository = tradeRepository;
         _biasMemoryService = biasMemoryService;
+        _notificationService = notificationService;
         _db = db;
         _logger = logger;
         _settings = settings.Value;
@@ -239,6 +242,10 @@ public class WhaleTrackerService : BackgroundService, IWhaleTrackerService
             Confidence = signal.TradeConfidence,
             AiReason = signal.Reason
         });
+
+        await _notificationService.SendAsync(
+            "WhaleTracker decision",
+            $"Tx: {transaction.TxHash}\nAction: {signal.Decision} {signal.Action} {signal.Symbol}\nMargin: {signal.MarginAmountUSDT:F4} USDT\nOKX: {(result == null ? "not executed" : result.Success ? "success" : $"failed {result.ErrorMessage}")}\nReason: {signal.Reason}");
 
         return signal;
     }
