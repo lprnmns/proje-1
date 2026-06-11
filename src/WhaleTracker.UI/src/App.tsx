@@ -3,7 +3,7 @@ import ForceGraph3D from 'react-force-graph-3d'
 import SpriteText from 'three-spritetext'
 import * as THREE from 'three'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, Stars } from '@react-three/drei'
+import { OrbitControls, Stars, Text } from '@react-three/drei'
 import { HubConnectionBuilder, HubConnectionState, LogLevel } from '@microsoft/signalr'
 import {
   Activity,
@@ -187,6 +187,24 @@ function AiCoreOrb({ bias }: { bias: string }) {
         <sphereGeometry args={[1.72, 48, 48]} />
         <meshBasicMaterial color={color} transparent opacity={0.08} wireframe />
       </mesh>
+      <Text
+        position={[0, 0.02, 1.35]}
+        fontSize={0.82}
+        color="#ecfeff"
+        anchorX="center"
+        anchorY="middle"
+      >
+        AI
+      </Text>
+      <Text
+        position={[0, -0.72, 1.28]}
+        fontSize={0.22}
+        color="#a5f3fc"
+        anchorX="center"
+        anchorY="middle"
+      >
+        CORE
+      </Text>
       <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.6} />
     </>
   )
@@ -297,7 +315,7 @@ function App() {
       name: `OKX ${formatUsd(operations?.okx?.totalUsd)}`,
       kind: 'okx',
       color: '#f97316',
-      size: 11,
+      size: 15,
     })
 
     wallets.forEach((wallet) => {
@@ -339,15 +357,92 @@ function App() {
 
   const nodeThreeObject = useCallback((node: GraphNode) => {
     const group = new THREE.Group()
-    const geometry = node.kind === 'ai'
-      ? new THREE.IcosahedronGeometry(node.size / 5, 3)
-      : node.kind === 'okx'
-        ? new THREE.OctahedronGeometry(node.size / 4, 1)
-        : new THREE.SphereGeometry(node.size / 4, 24, 24)
+
+    if (node.kind === 'ai') {
+      const coreMaterial = new THREE.MeshStandardMaterial({
+        color: node.color,
+        emissive: node.color,
+        emissiveIntensity: 0.9,
+        roughness: 0.22,
+        metalness: 0.35,
+      })
+      const core = new THREE.Mesh(new THREE.IcosahedronGeometry(4.2, 3), coreMaterial)
+      group.add(core)
+
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: node.color,
+        transparent: true,
+        opacity: 0.42,
+      })
+      const ringA = new THREE.Mesh(new THREE.TorusGeometry(6.1, 0.07, 12, 96), ringMaterial)
+      const ringB = new THREE.Mesh(new THREE.TorusGeometry(7.2, 0.045, 12, 96), ringMaterial)
+      ringA.rotation.x = Math.PI / 2.6
+      ringB.rotation.y = Math.PI / 2.8
+      group.add(ringA, ringB)
+
+      const mark = new SpriteText('AI')
+      mark.color = '#ecfeff'
+      mark.textHeight = 6
+      mark.position.set(0, 0.08, 4.75)
+      group.add(mark)
+
+      const label = new SpriteText('AI CORE')
+      label.color = '#a5f3fc'
+      label.textHeight = 3.1
+      label.position.y = 10.8
+      group.add(label)
+      return group
+    }
+
+    if (node.kind === 'okx') {
+      const blockMaterial = new THREE.MeshStandardMaterial({
+        color: '#f8fafc',
+        emissive: '#fb923c',
+        emissiveIntensity: 0.12,
+        roughness: 0.32,
+        metalness: 0.18,
+      })
+      const blockGeometry = new THREE.BoxGeometry(2.85, 2.85, 2.85)
+      const positions = [
+        [-2.85, 1.7, 0],
+        [0.38, 1.7, 0],
+        [-2.85, -1.5, 0],
+        [0.38, -1.5, 0],
+      ] as const
+
+      positions.forEach(([x, y, z]) => {
+        const cube = new THREE.Mesh(blockGeometry, blockMaterial)
+        cube.position.set(x, y, z)
+        cube.rotation.set(0.22, 0.28, 0.08)
+        group.add(cube)
+      })
+
+      const backing = new THREE.Mesh(
+        new THREE.BoxGeometry(10.6, 7.2, 0.18),
+        new THREE.MeshBasicMaterial({ color: '#020617', transparent: true, opacity: 0.68 }),
+      )
+      backing.position.set(-1.2, 0.08, -1.6)
+      group.add(backing)
+
+      const mark = new SpriteText('OKX')
+      mark.color = '#ffffff'
+      mark.textHeight = 4.8
+      mark.position.set(6.25, 0.02, 0.45)
+      group.add(mark)
+
+      const label = new SpriteText(formatUsd(operations?.okx?.totalUsd))
+      label.color = '#fed7aa'
+      label.textHeight = 2.65
+      label.position.set(1.75, -7.05, 0)
+      group.add(label)
+      return group
+    }
+
+    const geometry = new THREE.SphereGeometry(node.size / 4, 24, 24)
     const material = new THREE.MeshStandardMaterial({
       color: node.color,
       emissive: node.color,
-      emissiveIntensity: node.kind === 'ai' ? 0.65 : 0.28,
+      emissiveIntensity: 0.28,
       roughness: 0.38,
       metalness: node.kind === 'event' ? 0.45 : 0.12,
     })
@@ -355,11 +450,11 @@ function App() {
 
     const label = new SpriteText(node.name)
     label.color = '#dbeafe'
-    label.textHeight = node.kind === 'ai' ? 4.2 : 2.4
+    label.textHeight = 2.4
     label.position.y = node.size / 3 + 3
     group.add(label)
     return group
-  }, [])
+  }, [operations?.okx?.totalUsd])
 
   const handleNodeClick = useCallback((node: GraphNode) => {
     setSelected(node)
