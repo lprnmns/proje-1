@@ -12,6 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 EnvFileLoader.LoadNearest(builder.Environment.ContentRootPath);
 builder.Configuration.AddEnvironmentVariables();
 builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+builder.Logging.AddFilter("WhaleTracker.Infrastructure.Services.OkxService", LogLevel.Information);
 
 // ================================================================
 // YAPILANDIRMA (appsettings.json'dan okur)

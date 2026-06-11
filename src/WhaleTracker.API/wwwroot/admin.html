@@ -234,6 +234,71 @@
       </div>
     </section>
 
+    <section class="row g-3 mb-4">
+      <div class="col-12 col-lg-4">
+        <div class="card panel-card h-100">
+          <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between mb-3">
+              <h5 class="mb-0">OKX Account</h5>
+              <button class="btn btn-outline-light btn-sm" id="refreshOperations">Refresh</button>
+            </div>
+            <div class="metric" id="okxBalance">--</div>
+            <div class="subtle" id="okxMode">--</div>
+            <div class="subtle mt-3" id="okxPositionSummary">--</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-8">
+        <div class="card panel-card h-100">
+          <div class="card-body">
+            <h5 class="mb-3">Open Positions</h5>
+            <div class="table-responsive table-scroll">
+              <table class="table table-dark table-borderless align-middle">
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th>Side</th>
+                    <th>Margin</th>
+                    <th>Entry</th>
+                    <th>PnL</th>
+                  </tr>
+                </thead>
+                <tbody id="okxPositionRows">
+                  <tr><td colspan="5" class="text-muted">No positions loaded.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card panel-card mb-4">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <h5 class="mb-0">Recent Executions</h5>
+          <span class="tag" id="operationsCheckedAt">--</span>
+        </div>
+        <div class="table-responsive table-scroll">
+          <table class="table table-dark table-borderless align-middle">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Symbol</th>
+                <th>Action</th>
+                <th>Margin</th>
+                <th>Status</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody id="executionRows">
+              <tr><td colspan="6" class="text-muted">No executions loaded.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <section class="card panel-card">
       <div class="card-body">
         <div class="d-flex align-items-center justify-content-between mb-3">

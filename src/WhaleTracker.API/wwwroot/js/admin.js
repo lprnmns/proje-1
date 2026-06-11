@@ -23,6 +23,13 @@ const enableRuntimeBtn = document.getElementById("enableRuntime");
 const disableRuntimeBtn = document.getElementById("disableRuntime");
 const runtimeIntervalInput = document.getElementById("runtimeInterval");
 const runtimeDetails = document.getElementById("runtimeDetails");
+const refreshOperationsBtn = document.getElementById("refreshOperations");
+const okxBalance = document.getElementById("okxBalance");
+const okxMode = document.getElementById("okxMode");
+const okxPositionSummary = document.getElementById("okxPositionSummary");
+const okxPositionRows = document.getElementById("okxPositionRows");
+const executionRows = document.getElementById("executionRows");
+const operationsCheckedAt = document.getElementById("operationsCheckedAt");
 
 async function fetchJson(url, options = {}) {
   const headers = options.body
@@ -270,6 +277,57 @@ async function loadAiMemory() {
   }
 }
 
+async function loadOperations() {
+  try {
+    const snapshot = await fetchJson("/api/operations/snapshot");
+    operationsCheckedAt.textContent = formatDate(snapshot.checkedAt);
+
+    const okx = snapshot.okx || {};
+    okxBalance.textContent = okx.ok ? formatUsd(okx.totalUsd) : "OKX Error";
+    okxMode.textContent = okx.ok
+      ? `${okx.isDemo ? "Demo" : "Live"} account`
+      : escapeHtml(okx.error || "Unable to read OKX");
+
+    const positions = Array.isArray(okx.positions) ? okx.positions : [];
+    okxPositionSummary.textContent = `${positions.length} open position${positions.length === 1 ? "" : "s"}`;
+    okxPositionRows.innerHTML = positions.length
+      ? positions.map((position) => `
+        <tr>
+          <td>${escapeHtml(position.symbol || "--")}</td>
+          <td>${escapeHtml(position.direction || "--")}</td>
+          <td>${formatUsd(position.marginUsd)}</td>
+          <td>${Number(position.entryPrice || 0).toLocaleString()}</td>
+          <td class="${Number(position.unrealizedPnl || 0) >= 0 ? "pnl-positive" : "pnl-negative"}">
+            ${formatUsd(position.unrealizedPnl)}
+          </td>
+        </tr>`)
+        .join("")
+      : `<tr><td colspan="5" class="text-muted">No open positions.</td></tr>`;
+
+    const executions = Array.isArray(snapshot.recentTrades) ? snapshot.recentTrades : [];
+    executionRows.innerHTML = executions.length
+      ? executions.map((trade) => `
+        <tr>
+          <td>${formatDate(trade.createdAt)}</td>
+          <td>${escapeHtml(trade.symbol || "--")}</td>
+          <td>${escapeHtml(trade.action || "--")}</td>
+          <td>${formatUsd(trade.marginUsdt)}</td>
+          <td>
+            <span class="${trade.isSuccess ? "pnl-positive" : "pnl-negative"}">${trade.isSuccess ? "OK" : "FAIL"}</span>
+            <div class="subtle">${escapeHtml(trade.okxOrderId || trade.errorMessage || "")}</div>
+          </td>
+          <td class="execution-reason">${escapeHtml(trade.aiReason || "--")}</td>
+        </tr>`)
+        .join("")
+      : `<tr><td colspan="6" class="text-muted">No execution logs.</td></tr>`;
+  } catch (err) {
+    okxBalance.textContent = "Snapshot Error";
+    okxMode.textContent = err.message;
+    okxPositionRows.innerHTML = `<tr><td colspan="5" class="text-muted">Unable to load positions.</td></tr>`;
+    executionRows.innerHTML = `<tr><td colspan="6" class="text-muted">Unable to load executions.</td></tr>`;
+  }
+}
+
 async function runHistoricalScan() {
   const request = {
     preCrashStartUtc: toIsoFromLocalInput("preCrashStart"),
@@ -414,6 +472,7 @@ refreshAiMemoryBtn?.addEventListener("click", loadAiMemory);
 refreshRuntimeBtn?.addEventListener("click", loadStatus);
 enableRuntimeBtn?.addEventListener("click", () => updateRuntime(true));
 disableRuntimeBtn?.addEventListener("click", () => updateRuntime(false));
+refreshOperationsBtn?.addEventListener("click", loadOperations);
 
 document.addEventListener("DOMContentLoaded", () => {
   loadStatus();
@@ -421,8 +480,10 @@ document.addEventListener("DOMContentLoaded", () => {
   loadScans();
   loadTrackedWallets();
   loadAiMemory();
+  loadOperations();
   setInterval(loadStatus, 15000);
   setInterval(loadLogs, 20000);
   setInterval(loadTrackedWallets, 30000);
   setInterval(loadAiMemory, 30000);
+  setInterval(loadOperations, 30000);
 });

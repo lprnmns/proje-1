@@ -114,6 +114,11 @@ nav {
   opacity: 0.55;
 }
 
+.execution-reason {
+  max-width: 360px;
+  white-space: normal;
+}
+
 .status-pill {
   padding: 0.5rem 1rem;
   border-radius: 999px;
