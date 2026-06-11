@@ -125,6 +125,30 @@
 
     <section class="card panel-card mb-4">
       <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <h5 class="mb-0">Provider Health</h5>
+          <button class="btn btn-outline-light btn-sm" id="refreshProviders">Refresh</button>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-dark table-borderless align-middle">
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Status</th>
+                <th>Configured</th>
+                <th>Detail</th>
+              </tr>
+            </thead>
+            <tbody id="providerRows">
+              <tr><td colspan="4" class="text-muted">No provider health loaded.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="card panel-card mb-4">
+      <div class="card-body">
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
           <h5 class="mb-0">Historical Insider Scan</h5>
           <span class="tag">Etherscan + Uniswap V3</span>

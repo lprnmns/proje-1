@@ -33,6 +33,8 @@ const executionRows = document.getElementById("executionRows");
 const operationsCheckedAt = document.getElementById("operationsCheckedAt");
 const processManualEventBtn = document.getElementById("processManualEvent");
 const manualEventResult = document.getElementById("manualEventResult");
+const refreshProvidersBtn = document.getElementById("refreshProviders");
+const providerRows = document.getElementById("providerRows");
 
 async function fetchJson(url, options = {}) {
   const headers = options.body
@@ -331,6 +333,28 @@ async function loadOperations() {
   }
 }
 
+async function loadProviders() {
+  providerRows.innerHTML = `<tr><td colspan="4" class="text-muted">Checking providers...</td></tr>`;
+
+  try {
+    const data = await fetchJson("/api/providers/health");
+    const checks = Array.isArray(data.checks) ? data.checks : [];
+
+    providerRows.innerHTML = checks.length
+      ? checks.map((check) => `
+        <tr>
+          <td>${escapeHtml(check.provider || "--")}</td>
+          <td><span class="${check.ok ? "pnl-positive" : "pnl-negative"}">${check.ok ? "OK" : "FAIL"}</span></td>
+          <td>${check.configured ? "yes" : "no"}</td>
+          <td class="execution-reason">${escapeHtml(check.message || JSON.stringify(check.data || {}))}</td>
+        </tr>`)
+        .join("")
+      : `<tr><td colspan="4" class="text-muted">No provider checks.</td></tr>`;
+  } catch (err) {
+    providerRows.innerHTML = `<tr><td colspan="4" class="text-muted">Provider health failed: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
 async function runHistoricalScan() {
   const request = {
     preCrashStartUtc: toIsoFromLocalInput("preCrashStart"),
@@ -538,6 +562,7 @@ disableRuntimeBtn?.addEventListener("click", () => updateRuntime(false));
 scanNowBtn?.addEventListener("click", scanNow);
 refreshOperationsBtn?.addEventListener("click", loadOperations);
 processManualEventBtn?.addEventListener("click", processManualEvent);
+refreshProvidersBtn?.addEventListener("click", loadProviders);
 
 document.addEventListener("DOMContentLoaded", () => {
   loadStatus();
@@ -546,9 +571,11 @@ document.addEventListener("DOMContentLoaded", () => {
   loadTrackedWallets();
   loadAiMemory();
   loadOperations();
+  loadProviders();
   setInterval(loadStatus, 15000);
   setInterval(loadLogs, 20000);
   setInterval(loadTrackedWallets, 30000);
   setInterval(loadAiMemory, 30000);
   setInterval(loadOperations, 30000);
+  setInterval(loadProviders, 60000);
 });
