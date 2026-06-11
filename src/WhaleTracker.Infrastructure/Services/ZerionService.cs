@@ -58,7 +58,7 @@ public class ZerionService : IZerionService
 
         EnsureConfigured();
 
-        var portfolioJson = await GetJsonAsync($"/wallets/{walletAddress}/portfolio/?currency=usd");
+        var portfolioJson = await GetJsonAsync($"/wallets/{walletAddress}/portfolio?currency=usd");
         var totalUsd = ExtractPortfolioTotal(portfolioJson);
         var holdings = await GetWalletHoldingsAsync(walletAddress);
 
