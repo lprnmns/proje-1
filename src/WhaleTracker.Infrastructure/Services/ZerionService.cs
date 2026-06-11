@@ -31,6 +31,11 @@ public class ZerionService : IZerionService
         "USDT", "USDC", "DAI", "USDE", "SUSDE", "FDUSD", "TUSD", "PYUSD"
     };
 
+    private static readonly HashSet<string> TradeSignalSymbols = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "BTC", "WBTC", "ETH", "WETH", "SOL", "XRP", "BNB", "DOGE", "ADA", "LINK", "AVAX", "TON"
+    };
+
     public ZerionService(
         HttpClient httpClient,
         ILogger<ZerionService> logger,
@@ -174,6 +179,7 @@ public class ZerionService : IZerionService
         return holdings
             .Where(x => x.UsdValue > 0)
             .OrderByDescending(x => x.UsdValue)
+            .Take(10)
             .ToList();
     }
 
@@ -258,20 +264,23 @@ public class ZerionService : IZerionService
             var inStable = StableSymbols.Contains(inTop.Symbol);
             var outStable = StableSymbols.Contains(outTop.Symbol);
 
-            if (outStable && !inStable)
+            if (outStable && !inStable && IsSignalSymbol(inTop.Symbol))
             {
                 inTop.Direction = "Incoming";
                 return inTop;
             }
 
-            if (!outStable && inStable)
+            if (!outStable && inStable && IsSignalSymbol(outTop.Symbol))
             {
                 outTop.Direction = "Outgoing";
                 return outTop;
             }
         }
 
-        var selected = transfers.OrderByDescending(x => x.ValueUsd).FirstOrDefault();
+        var selected = transfers
+            .Where(x => IsSignalSymbol(x.Symbol))
+            .OrderByDescending(x => x.ValueUsd)
+            .FirstOrDefault();
         if (selected == null)
         {
             return null;
@@ -279,6 +288,11 @@ public class ZerionService : IZerionService
 
         selected.Direction = IsIncoming(selected.RawDirection) ? "Incoming" : "Outgoing";
         return selected;
+    }
+
+    private static bool IsSignalSymbol(string symbol)
+    {
+        return StableSymbols.Contains(symbol) || TradeSignalSymbols.Contains(symbol);
     }
 
     private static bool IsIncoming(string direction)

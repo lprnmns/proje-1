@@ -11,8 +11,8 @@ public class AlchemyWalletActivityService : IWalletActivityService
 {
     private static readonly HashSet<string> SignalSymbols = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ETH", "WETH", "BTC", "WBTC", "USDT", "USDC", "DAI", "USDE", "SUSDE",
-        "SOL", "LINK", "UNI", "AAVE", "MKR", "LDO", "ENA", "PEPE", "SHIB"
+        "USDT", "USDC", "DAI", "USDE", "SUSDE",
+        "BTC", "WBTC", "ETH", "WETH", "SOL", "XRP", "BNB", "DOGE", "ADA", "LINK", "AVAX", "TON"
     };
 
     private readonly HttpClient _httpClient;
