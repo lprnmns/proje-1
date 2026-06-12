@@ -870,6 +870,24 @@ function App() {
     }
   }
 
+  const retryTraderDiscovery = async () => {
+    if (!activeDiscoveryRun || activeDiscoveryRun.state !== 'FAILED' || isDiscoveryRunning) return
+    setIsDiscoveryRunning(true)
+    try {
+      const run = await fetchJson<TraderDiscoveryRun>(
+        `/api/trader-finder/discovery-runs/${activeDiscoveryRun.id}/retry`,
+        { method: 'POST' },
+      )
+      setActiveDiscoveryRun(run)
+      setDiscoveryCandidates([])
+      setAlert('')
+      await loadMissionState()
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : 'Dune retry failed')
+      setIsDiscoveryRunning(false)
+    }
+  }
+
   const loadDiscoveryCandidates = async (runId: number) => {
     const run = await fetchJson<TraderDiscoveryRun>(`/api/trader-finder/discovery-runs/${runId}`)
     const rows = await fetchJson<TraderDiscoveryCandidate[]>(
@@ -1159,6 +1177,11 @@ function App() {
                   </div>
                   <p>{activeDiscoveryRun.errorMessage || activeDiscoveryRun.statusMessage}</p>
                   {activeDiscoveryRun.executionId && <small>Dune execution: {activeDiscoveryRun.executionId}</small>}
+                  {activeDiscoveryRun.state === 'FAILED' && (
+                    <button className="retry-action" onClick={retryTraderDiscovery}>
+                      <RefreshCw size={14} /> Retry discovery
+                    </button>
+                  )}
                   <div className="progress-log">
                     {[...(activeDiscoveryRun.progressLog || [])].reverse().map((entry, index) => (
                       <div key={`${entry.timestampUtc}-${index}`} className={entry.state === 'FAILED' ? 'error' : ''}>

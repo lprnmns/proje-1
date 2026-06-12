@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -45,8 +46,8 @@ public sealed class DuneTraderDiscoveryService : ITraderDiscoveryService
         var startedAt = DateTime.UtcNow;
         await ReportAsync(progress, 5, "preparing_sql", "PREPARING", "Dune SQL and filters are being prepared.", cancellationToken);
         var executionId = _settings.QueryId.HasValue
-            ? await ExecuteSavedQueryAsync(_settings.QueryId.Value, request, cancellationToken)
-            : await ExecuteSqlAsync(BuildDiscoverySql(request), cancellationToken);
+            ? await ExecuteSavedQueryAsync(_settings.QueryId.Value, request, progress, cancellationToken)
+            : await ExecuteSqlAsync(BuildDiscoverySql(request), progress, cancellationToken);
         await ReportAsync(
             progress,
             15,
@@ -186,7 +187,10 @@ public sealed class DuneTraderDiscoveryService : ITraderDiscoveryService
             """;
     }
 
-    private async Task<string> ExecuteSqlAsync(string sql, CancellationToken cancellationToken)
+    private async Task<string> ExecuteSqlAsync(
+        string sql,
+        Func<TraderDiscoveryProgress, CancellationToken, Task>? progress,
+        CancellationToken cancellationToken)
     {
         var payload = new Dictionary<string, object> { ["sql"] = sql };
         if (!string.IsNullOrWhiteSpace(_settings.Performance))
@@ -194,7 +198,16 @@ public sealed class DuneTraderDiscoveryService : ITraderDiscoveryService
             payload["performance"] = _settings.Performance;
         }
 
-        using var response = await _httpClient.PostAsJsonAsync("sql/execute", payload, cancellationToken);
+        using var response = await SendWithRetryAsync(
+            () => new HttpRequestMessage(HttpMethod.Post, "sql/execute")
+            {
+                Content = JsonContent.Create(payload)
+            },
+            progress,
+            8,
+            "submitting_query",
+            string.Empty,
+            cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
@@ -208,6 +221,7 @@ public sealed class DuneTraderDiscoveryService : ITraderDiscoveryService
     private async Task<string> ExecuteSavedQueryAsync(
         long queryId,
         TraderDiscoveryRequest request,
+        Func<TraderDiscoveryProgress, CancellationToken, Task>? progress,
         CancellationToken cancellationToken)
     {
         var payload = new
@@ -222,9 +236,15 @@ public sealed class DuneTraderDiscoveryService : ITraderDiscoveryService
             }
         };
 
-        using var response = await _httpClient.PostAsJsonAsync(
-            $"query/{queryId}/execute",
-            payload,
+        using var response = await SendWithRetryAsync(
+            () => new HttpRequestMessage(HttpMethod.Post, $"query/{queryId}/execute")
+            {
+                Content = JsonContent.Create(payload)
+            },
+            progress,
+            8,
+            "submitting_query",
+            string.Empty,
             cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -250,8 +270,14 @@ public sealed class DuneTraderDiscoveryService : ITraderDiscoveryService
         var lastReportedPercent = 15;
         while (DateTime.UtcNow < deadline)
         {
-            using var response = await _httpClient.GetAsync(
-                $"execution/{executionId}/results?limit=1000",
+            using var response = await SendWithRetryAsync(
+                () => new HttpRequestMessage(
+                    HttpMethod.Get,
+                    $"execution/{executionId}/results?limit=1000"),
+                progress,
+                lastReportedPercent,
+                "polling_dune",
+                executionId,
                 cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
@@ -310,6 +336,80 @@ public sealed class DuneTraderDiscoveryService : ITraderDiscoveryService
 
         throw new TimeoutException($"Dune execution {executionId} did not finish before timeout.");
     }
+
+    private async Task<HttpResponseMessage> SendWithRetryAsync(
+        Func<HttpRequestMessage> requestFactory,
+        Func<TraderDiscoveryProgress, CancellationToken, Task>? progress,
+        int progressPercent,
+        string progressStage,
+        string executionId,
+        CancellationToken cancellationToken)
+    {
+        const int maximumAttempts = 4;
+        for (var attempt = 1; attempt <= maximumAttempts; attempt++)
+        {
+            HttpResponseMessage? response = null;
+            try
+            {
+                using var request = requestFactory();
+                response = await _httpClient.SendAsync(request, cancellationToken);
+                if (response.IsSuccessStatusCode || !IsTransient(response.StatusCode))
+                {
+                    return response;
+                }
+
+                if (attempt == maximumAttempts)
+                {
+                    return response;
+                }
+
+                var delay = response.Headers.RetryAfter?.Delta ??
+                            TimeSpan.FromSeconds(Math.Pow(2, attempt));
+                _logger.LogWarning(
+                    "Dune returned {StatusCode}. Retrying attempt {NextAttempt}/{MaximumAttempts} in {DelaySeconds}s.",
+                    (int)response.StatusCode,
+                    attempt + 1,
+                    maximumAttempts,
+                    delay.TotalSeconds);
+                await ReportAsync(
+                    progress,
+                    progressPercent,
+                    progressStage,
+                    "RETRYING",
+                    $"Dune returned HTTP {(int)response.StatusCode}. Retry {attempt + 1}/{maximumAttempts} in {delay.TotalSeconds:F0}s.",
+                    cancellationToken,
+                    executionId);
+                response.Dispose();
+                await Task.Delay(delay, cancellationToken);
+            }
+            catch (HttpRequestException ex) when (attempt < maximumAttempts)
+            {
+                response?.Dispose();
+                var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
+                _logger.LogWarning(
+                    ex,
+                    "Dune network request failed. Retrying attempt {NextAttempt}/{MaximumAttempts} in {DelaySeconds}s.",
+                    attempt + 1,
+                    maximumAttempts,
+                    delay.TotalSeconds);
+                await ReportAsync(
+                    progress,
+                    progressPercent,
+                    progressStage,
+                    "RETRYING",
+                    $"Dune network error: {ex.Message}. Retry {attempt + 1}/{maximumAttempts} in {delay.TotalSeconds:F0}s.",
+                    cancellationToken,
+                    executionId);
+                await Task.Delay(delay, cancellationToken);
+            }
+        }
+
+        throw new HttpRequestException("Dune request failed after retries.");
+    }
+
+    private static bool IsTransient(HttpStatusCode statusCode) =>
+        statusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests ||
+        (int)statusCode >= 500;
 
     private static Task ReportAsync(
         Func<TraderDiscoveryProgress, CancellationToken, Task>? progress,

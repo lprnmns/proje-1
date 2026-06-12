@@ -422,6 +422,18 @@ input {
   overflow-wrap: anywhere;
 }
 
+.retry-action {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  background: #2a1017;
+  color: #fecaca;
+}
+
 .progress-log {
   max-height: 170px;
   overflow: auto;

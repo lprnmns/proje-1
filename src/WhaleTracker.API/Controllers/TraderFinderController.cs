@@ -101,6 +101,46 @@ public sealed class TraderFinderController : ControllerBase
         return run == null ? NotFound() : Ok(ToDiscoveryRunResponse(run));
     }
 
+    [HttpPost("discovery-runs/{runId:long}/retry")]
+    public async Task<IActionResult> RetryDiscoveryRun(
+        long runId,
+        CancellationToken cancellationToken = default)
+    {
+        var failed = await _db.TraderDiscoveryRuns
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == runId, cancellationToken);
+        if (failed == null)
+        {
+            return NotFound();
+        }
+
+        if (failed.State != "FAILED")
+        {
+            return Conflict(new { error = "Only failed discovery runs can be retried." });
+        }
+
+        var retry = CreateDiscoveryRun(new TraderDiscoveryRequest
+        {
+            LookbackDays = failed.LookbackDays,
+            MinimumActiveWeeks = failed.MinimumActiveWeeks,
+            MinimumMeaningfulSwaps = failed.MinimumMeaningfulSwaps,
+            MinimumSwapUsd = failed.MinimumSwapUsd,
+            CandidateLimit = failed.CandidateLimit
+        }, $"Retry of discovery #{failed.Id} queued.");
+        _db.TraderDiscoveryRuns.Add(retry);
+        await _db.SaveChangesAsync(cancellationToken);
+        if (!_discoveryQueue.Enqueue(retry.Id))
+        {
+            retry.State = "FAILED";
+            retry.CurrentStage = "queue_failed";
+            retry.ErrorMessage = "Discovery retry could not be queued.";
+            await _db.SaveChangesAsync(cancellationToken);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, ToDiscoveryRunResponse(retry));
+        }
+
+        return Accepted(ToDiscoveryRunResponse(retry));
+    }
+
     [HttpGet("discovery-runs/{runId:long}/candidates")]
     public async Task<IActionResult> ListDiscoveryCandidates(
         long runId,
@@ -400,6 +440,36 @@ public sealed class TraderFinderController : ControllerBase
             return new();
         }
     }
+
+    private static TraderDiscoveryRunEntity CreateDiscoveryRun(
+        TraderDiscoveryRequest request,
+        string initialMessage) => new()
+    {
+        Provider = "dune",
+        State = "QUEUED",
+        LookbackDays = request.LookbackDays,
+        MinimumActiveWeeks = request.MinimumActiveWeeks,
+        MinimumMeaningfulSwaps = request.MinimumMeaningfulSwaps,
+        MinimumSwapUsd = request.MinimumSwapUsd,
+        CandidateLimit = request.CandidateLimit,
+        CandidateCount = 0,
+        ProgressPercent = 0,
+        CurrentStage = "queued",
+        StatusMessage = "Waiting for the discovery worker.",
+        ProgressLogJson = JsonSerializer.Serialize(new[]
+        {
+            new TraderDiscoveryProgress
+            {
+                Percent = 0,
+                Stage = "queued",
+                State = "QUEUED",
+                Message = initialMessage,
+                TimestampUtc = DateTime.UtcNow
+            }
+        }),
+        StartedAtUtc = DateTime.UtcNow,
+        CompletedAtUtc = DateTime.UtcNow
+    };
 
     private static bool IsValidEvmAddress(string? address)
     {
