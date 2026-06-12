@@ -13,6 +13,8 @@ public static class EnvFileLoader
         ["GROQ_BASE_URL"] = "Groq__BaseUrl",
         ["ALCHEMY_API_KEY"] = "Alchemy__ApiKey",
         ["ALCHEMY_NETWORK"] = "Alchemy__Network",
+        ["DUNE_API_KEY"] = "Dune__ApiKey",
+        ["DUNE_QUERY_ID"] = "Dune__QueryId",
         ["OPENAI_API_KEY"] = "OpenAi__ApiKey",
         ["OKX_API_KEY"] = "Okx__ApiKey",
         ["OKX_SECRET_KEY"] = "Okx__SecretKey",

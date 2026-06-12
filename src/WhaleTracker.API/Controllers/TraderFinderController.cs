@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using WhaleTracker.Core.Interfaces;
 using WhaleTracker.Core.Models;
 using WhaleTracker.Data;
@@ -14,14 +15,120 @@ namespace WhaleTracker.API.Controllers;
 public sealed class TraderFinderController : ControllerBase
 {
     private readonly ITraderPerformanceService _performanceService;
+    private readonly ITraderDiscoveryService _discoveryService;
     private readonly WhaleTrackerDbContext _db;
 
     public TraderFinderController(
         ITraderPerformanceService performanceService,
+        ITraderDiscoveryService discoveryService,
         WhaleTrackerDbContext db)
     {
         _performanceService = performanceService;
+        _discoveryService = discoveryService;
         _db = db;
+    }
+
+    [HttpPost("discover")]
+    public async Task<IActionResult> Discover(
+        [FromBody] TraderDiscoveryRequest request,
+        CancellationToken cancellationToken)
+    {
+        TraderDiscoveryResult result;
+        try
+        {
+            result = await _discoveryService.DiscoverAsync(request, cancellationToken);
+        }
+        catch (TimeoutException ex)
+        {
+            return StatusCode(StatusCodes.Status504GatewayTimeout, new { error = ex.Message });
+        }
+        catch (HttpRequestException ex)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = ex.Message });
+        }
+
+        var run = new TraderDiscoveryRunEntity
+        {
+            Provider = result.Provider,
+            ExecutionId = result.ExecutionId,
+            State = result.State,
+            LookbackDays = request.LookbackDays,
+            MinimumActiveWeeks = request.MinimumActiveWeeks,
+            MinimumMeaningfulSwaps = request.MinimumMeaningfulSwaps,
+            MinimumSwapUsd = request.MinimumSwapUsd,
+            CandidateLimit = request.CandidateLimit,
+            CandidateCount = result.Candidates.Count,
+            StartedAtUtc = result.StartedAtUtc,
+            CompletedAtUtc = result.CompletedAtUtc,
+            Candidates = result.Candidates.Select(candidate => new TraderDiscoveryCandidateEntity
+            {
+                WalletAddress = candidate.WalletAddress,
+                MeaningfulSwapCount = candidate.MeaningfulSwapCount,
+                ActiveWeekCount = candidate.ActiveWeekCount,
+                ApprovedNotionalUsd = candidate.ApprovedNotionalUsd,
+                ActiveChainCount = candidate.ActiveChainCount,
+                ActiveChainsJson = JsonSerializer.Serialize(candidate.ActiveChains),
+                FirstTradeUtc = candidate.FirstTradeUtc,
+                LastTradeUtc = candidate.LastTradeUtc
+            }).ToList()
+        };
+
+        _db.TraderDiscoveryRuns.Add(run);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return Ok(new
+        {
+            runId = run.Id,
+            result.Provider,
+            result.ExecutionId,
+            result.State,
+            candidateCount = result.Candidates.Count,
+            result.StartedAtUtc,
+            result.CompletedAtUtc,
+            candidates = run.Candidates.Select(ToDiscoveryResponse)
+        });
+    }
+
+    [HttpGet("discovery-runs")]
+    public async Task<IActionResult> ListDiscoveryRuns(
+        [FromQuery] int count = 20,
+        CancellationToken cancellationToken = default)
+    {
+        count = Math.Clamp(count, 1, 100);
+        return Ok(await _db.TraderDiscoveryRuns
+            .AsNoTracking()
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(count)
+            .Select(x => new
+            {
+                x.Id,
+                x.Provider,
+                x.ExecutionId,
+                x.State,
+                x.LookbackDays,
+                x.MinimumActiveWeeks,
+                x.MinimumMeaningfulSwaps,
+                x.MinimumSwapUsd,
+                x.CandidateLimit,
+                x.CandidateCount,
+                x.StartedAtUtc,
+                x.CompletedAtUtc,
+                x.CreatedAt
+            })
+            .ToListAsync(cancellationToken));
+    }
+
+    [HttpGet("discovery-runs/{runId:long}/candidates")]
+    public async Task<IActionResult> ListDiscoveryCandidates(
+        long runId,
+        CancellationToken cancellationToken = default)
+    {
+        var candidates = await _db.TraderDiscoveryCandidates
+            .AsNoTracking()
+            .Where(x => x.TraderDiscoveryRunId == runId)
+            .OrderByDescending(x => x.ApprovedNotionalUsd)
+            .ToListAsync(cancellationToken);
+        return Ok(candidates.Select(ToDiscoveryResponse));
     }
 
     [HttpPost("scan")]
@@ -259,6 +366,21 @@ public sealed class TraderFinderController : ControllerBase
         item.StartPointUtc,
         item.EndPointUtc,
         item.ChartPeriod,
+        item.CreatedAt
+    };
+
+    private static object ToDiscoveryResponse(TraderDiscoveryCandidateEntity item) => new
+    {
+        item.Id,
+        item.TraderDiscoveryRunId,
+        item.WalletAddress,
+        item.MeaningfulSwapCount,
+        item.ActiveWeekCount,
+        item.ApprovedNotionalUsd,
+        item.ActiveChainCount,
+        activeChains = JsonSerializer.Deserialize<List<string>>(item.ActiveChainsJson) ?? new(),
+        item.FirstTradeUtc,
+        item.LastTradeUtc,
         item.CreatedAt
     };
 

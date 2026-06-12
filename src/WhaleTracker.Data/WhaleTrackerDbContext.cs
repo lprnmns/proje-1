@@ -52,6 +52,11 @@ public class WhaleTrackerDbContext : DbContext
 
     public DbSet<TraderCandidateEntity> TraderCandidates => Set<TraderCandidateEntity>();
 
+    public DbSet<TraderDiscoveryRunEntity> TraderDiscoveryRuns => Set<TraderDiscoveryRunEntity>();
+
+    public DbSet<TraderDiscoveryCandidateEntity> TraderDiscoveryCandidates =>
+        Set<TraderDiscoveryCandidateEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -138,6 +143,23 @@ public class WhaleTrackerDbContext : DbContext
             entity.HasIndex(e => e.WalletAddress);
             entity.HasIndex(e => e.Score);
             entity.HasIndex(e => e.AdjustedProfitUsd);
+        });
+
+        modelBuilder.Entity<TraderDiscoveryRunEntity>(entity =>
+        {
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => e.ExecutionId);
+            entity.HasMany(e => e.Candidates)
+                .WithOne(e => e.TraderDiscoveryRun)
+                .HasForeignKey(e => e.TraderDiscoveryRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TraderDiscoveryCandidateEntity>(entity =>
+        {
+            entity.HasIndex(e => e.WalletAddress);
+            entity.HasIndex(e => e.ApprovedNotionalUsd);
+            entity.HasIndex(e => new { e.TraderDiscoveryRunId, e.WalletAddress }).IsUnique();
         });
     }
 }

@@ -305,6 +305,30 @@ pre {
   gap: 8px;
 }
 
+.section-heading {
+  display: grid;
+  gap: 3px;
+  margin: 4px 0 10px;
+  padding-top: 14px;
+  border-top: 1px solid #203047;
+}
+
+.section-heading:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.section-heading strong {
+  color: #edf7ff;
+  font-size: 0.86rem;
+}
+
+.section-heading span {
+  color: #86a0ba;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
 label {
   min-width: 0;
   display: flex;

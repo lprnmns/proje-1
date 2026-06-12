@@ -15,6 +15,7 @@ public class ProvidersController : ControllerBase
     private readonly IAIService _aiService;
     private readonly IOkxService _okxService;
     private readonly IZerionService _zerionService;
+    private readonly ITraderDiscoveryService _traderDiscoveryService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly AppSettings _settings;
 
@@ -22,12 +23,14 @@ public class ProvidersController : ControllerBase
         IAIService aiService,
         IOkxService okxService,
         IZerionService zerionService,
+        ITraderDiscoveryService traderDiscoveryService,
         IHttpClientFactory httpClientFactory,
         IOptions<AppSettings> settings)
     {
         _aiService = aiService;
         _okxService = okxService;
         _zerionService = zerionService;
+        _traderDiscoveryService = traderDiscoveryService;
         _httpClientFactory = httpClientFactory;
         _settings = settings.Value;
     }
@@ -40,6 +43,7 @@ public class ProvidersController : ControllerBase
             await CheckGroqAsync(),
             await CheckOkxAsync(),
             await CheckAlchemyAsync(),
+            await CheckDuneAsync(),
             await CheckZerionAsync(),
             CheckTelegram()
         };
@@ -140,6 +144,26 @@ public class ProvidersController : ControllerBase
         catch (Exception ex)
         {
             return Failed("zerion", ex.Message);
+        }
+    }
+
+    private async Task<object> CheckDuneAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_settings.Dune.ApiKey))
+        {
+            return Failed("dune", "not_configured");
+        }
+
+        try
+        {
+            var ok = await _traderDiscoveryService.CheckHealthAsync();
+            return ok
+                ? Ok("dune", new { mode = _settings.Dune.QueryId.HasValue ? "saved_query" : "sql" })
+                : Failed("dune", "health_check_failed");
+        }
+        catch (Exception ex)
+        {
+            return Failed("dune", ex.Message);
         }
     }
 

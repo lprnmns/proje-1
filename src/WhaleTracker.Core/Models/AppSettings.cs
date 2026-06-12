@@ -12,6 +12,7 @@ public class AppSettings
     public OpenAiSettings OpenAi { get; set; } = new();
     public GroqSettings Groq { get; set; } = new();
     public AlchemySettings Alchemy { get; set; } = new();
+    public DuneSettings Dune { get; set; } = new();
     public TradingSettings Trading { get; set; } = new();
     public AuthSettings Auth { get; set; } = new();
     public DatabaseSettings Database { get; set; } = new();
@@ -142,6 +143,16 @@ public class AlchemySettings
 {
     public string ApiKey { get; set; } = string.Empty;
     public string Network { get; set; } = "eth-mainnet";
+}
+
+public class DuneSettings
+{
+    public string ApiKey { get; set; } = string.Empty;
+    public string BaseUrl { get; set; } = "https://api.dune.com/api/v1/";
+    public long? QueryId { get; set; }
+    public string Performance { get; set; } = string.Empty;
+    public int PollIntervalSeconds { get; set; } = 2;
+    public int TimeoutSeconds { get; set; } = 180;
 }
 
 public class AuthSettings

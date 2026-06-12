@@ -101,6 +101,35 @@ type TraderCandidate = {
   chartPeriod: string
 }
 
+type TraderDiscoveryRun = {
+  id: number
+  provider: string
+  executionId: string
+  state: string
+  lookbackDays: number
+  minimumActiveWeeks: number
+  minimumMeaningfulSwaps: number
+  minimumSwapUsd: number
+  candidateLimit: number
+  candidateCount: number
+  startedAtUtc: string
+  completedAtUtc: string
+  createdAt: string
+}
+
+type TraderDiscoveryCandidate = {
+  id: number
+  traderDiscoveryRunId: number
+  walletAddress: string
+  meaningfulSwapCount: number
+  activeWeekCount: number
+  approvedNotionalUsd: number
+  activeChainCount: number
+  activeChains: string[]
+  firstTradeUtc: string
+  lastTradeUtc: string
+}
+
 type GraphNode = {
   id: string
   name: string
@@ -355,6 +384,9 @@ function App() {
   const [operations, setOperations] = useState<OperationsSnapshot | null>(null)
   const [traderScans, setTraderScans] = useState<TraderScan[]>([])
   const [traderCandidates, setTraderCandidates] = useState<TraderCandidate[]>([])
+  const [discoveryRuns, setDiscoveryRuns] = useState<TraderDiscoveryRun[]>([])
+  const [discoveryCandidates, setDiscoveryCandidates] = useState<TraderDiscoveryCandidate[]>([])
+  const [isDiscoveryRunning, setIsDiscoveryRunning] = useState(false)
   const [isTraderScanRunning, setIsTraderScanRunning] = useState(false)
   const [selected, setSelected] = useState<GraphNode | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('events')
@@ -370,6 +402,13 @@ function App() {
     minimumStartingValueUsd: 100000,
     top: 10,
     candidateWallets: '',
+  })
+  const [discoveryForm, setDiscoveryForm] = useState({
+    lookbackDays: 28,
+    minimumActiveWeeks: 3,
+    minimumMeaningfulSwaps: 4,
+    minimumSwapUsd: 1500,
+    candidateLimit: 100,
   })
 
   useEffect(() => {
@@ -446,18 +485,20 @@ function App() {
 
   const loadMissionState = useCallback(async () => {
     try {
-      const [walletList, eventList, state, ops, traderScanList] = await Promise.all([
+      const [walletList, eventList, state, ops, traderScanList, discoveryRunList] = await Promise.all([
         fetchJson<Wallet[]>('/api/tracked-wallets?includeInactive=true'),
         fetchJson<LiveEvent[]>('/api/live-events?count=120'),
         fetchJson<AiState>('/api/ai-memory/state'),
         fetchJson<OperationsSnapshot>('/api/operations/snapshot'),
         fetchJson<TraderScan[]>('/api/trader-finder/scans?count=10'),
+        fetchJson<TraderDiscoveryRun[]>('/api/trader-finder/discovery-runs?count=10'),
       ])
       setWallets((current) => JSON.stringify(current) === JSON.stringify(walletList) ? current : walletList)
       setEvents((current) => JSON.stringify(current) === JSON.stringify(eventList) ? current : eventList)
       setAiState(state)
       setOperations(ops)
       setTraderScans((current) => JSON.stringify(current) === JSON.stringify(traderScanList) ? current : traderScanList)
+      setDiscoveryRuns((current) => JSON.stringify(current) === JSON.stringify(discoveryRunList) ? current : discoveryRunList)
       setAlert('')
     } catch (error) {
       setAlert(error instanceof Error ? error.message : 'Mission state unavailable')
@@ -787,6 +828,43 @@ function App() {
     }
   }
 
+  const runTraderDiscovery = async () => {
+    if (isDiscoveryRunning) return
+    setIsDiscoveryRunning(true)
+    try {
+      const result = await fetchJson<{
+        runId: number
+        candidateCount: number
+        candidates: TraderDiscoveryCandidate[]
+      }>('/api/trader-finder/discover', {
+        method: 'POST',
+        body: JSON.stringify(discoveryForm),
+      })
+      setDiscoveryCandidates(result.candidates)
+      setTraderForm((current) => ({
+        ...current,
+        candidateWallets: result.candidates.map((candidate) => candidate.walletAddress).join('\n'),
+      }))
+      await loadMissionState()
+      setAlert(result.candidateCount === 0 ? 'Dune scan completed, but no wallet matched these filters.' : '')
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : 'Dune discovery failed')
+    } finally {
+      setIsDiscoveryRunning(false)
+    }
+  }
+
+  const loadDiscoveryCandidates = async (runId: number) => {
+    const rows = await fetchJson<TraderDiscoveryCandidate[]>(
+      `/api/trader-finder/discovery-runs/${runId}/candidates`,
+    )
+    setDiscoveryCandidates(rows)
+    setTraderForm((current) => ({
+      ...current,
+      candidateWallets: rows.map((candidate) => candidate.walletAddress).join('\n'),
+    }))
+  }
+
   const loadTraderCandidates = async (scanId: number) => {
     const rows = await fetchJson<TraderCandidate[]>(`/api/trader-finder/scans/${scanId}/candidates`)
     setTraderCandidates(rows)
@@ -975,6 +1053,44 @@ function App() {
 
           {activeTab === 'insider' && (
             <div className="insider-lab">
+              <div className="section-heading">
+                <strong>Dune discovery</strong>
+                <span>Find active, copyable-major traders across Ethereum and L2s.</span>
+              </div>
+              <div className="scan-grid">
+                <label>Lookback days<input type="number" min="7" max="180" value={discoveryForm.lookbackDays} onChange={(e) => setDiscoveryForm({ ...discoveryForm, lookbackDays: Number(e.target.value) })} /></label>
+                <label>Active weeks<input type="number" min="1" max="26" value={discoveryForm.minimumActiveWeeks} onChange={(e) => setDiscoveryForm({ ...discoveryForm, minimumActiveWeeks: Number(e.target.value) })} /></label>
+                <label>Min swaps<input type="number" min="1" max="1000" value={discoveryForm.minimumMeaningfulSwaps} onChange={(e) => setDiscoveryForm({ ...discoveryForm, minimumMeaningfulSwaps: Number(e.target.value) })} /></label>
+                <label>Min swap USD<input type="number" min="1" step="100" value={discoveryForm.minimumSwapUsd} onChange={(e) => setDiscoveryForm({ ...discoveryForm, minimumSwapUsd: Number(e.target.value) })} /></label>
+                <label>Candidate limit<input type="number" min="1" max="500" value={discoveryForm.candidateLimit} onChange={(e) => setDiscoveryForm({ ...discoveryForm, candidateLimit: Number(e.target.value) })} /></label>
+              </div>
+              <button className="primary-action" disabled={isDiscoveryRunning} onClick={runTraderDiscovery}>
+                <Database size={16} /> {isDiscoveryRunning ? 'Scanning Dune...' : 'Discover active traders'}
+              </button>
+              <div className="scan-list">
+                {discoveryRuns.map((run) => (
+                  <button key={run.id} onClick={() => loadDiscoveryCandidates(run.id)}>
+                    Discovery #{run.id} · {run.candidateCount} candidates · {run.lookbackDays}d · {formatTime(run.createdAt)}
+                  </button>
+                ))}
+              </div>
+              <div className="candidate-list">
+                {discoveryCandidates.map((candidate) => (
+                  <div className="candidate-row" key={candidate.id}>
+                    <div>
+                      <strong>{shortAddress(candidate.walletAddress)}</strong>
+                      <span>
+                        {candidate.meaningfulSwapCount} swaps · {candidate.activeWeekCount} active weeks · {formatUsd(candidate.approvedNotionalUsd)}
+                      </span>
+                      <small>{candidate.activeChains.join(', ')} · last trade {formatTime(candidate.lastTradeUtc)}</small>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="section-heading">
+                <strong>Performance verification</strong>
+                <span>Analyze discovered wallets before adding them to live tracking.</span>
+              </div>
               <div className="scan-grid">
                 <label>Start<input type="datetime-local" value={traderForm.startUtc} onChange={(e) => setTraderForm({ ...traderForm, startUtc: e.target.value })} /></label>
                 <label>End<input type="datetime-local" value={traderForm.endUtc} onChange={(e) => setTraderForm({ ...traderForm, endUtc: e.target.value })} /></label>
