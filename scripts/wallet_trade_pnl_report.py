@@ -183,6 +183,7 @@ aggregator_rows AS (
       AND t.amount_usd >= {min_trade}
       AND upper(coalesce(t.token_bought_symbol, '')) IN (SELECT symbol FROM approved_symbols)
       AND upper(coalesce(t.token_sold_symbol, '')) IN (SELECT symbol FROM approved_symbols)
+      AND upper(coalesce(t.token_bought_symbol, '')) <> upper(coalesce(t.token_sold_symbol, ''))
 ),
 raw_non_aggregator_rows AS (
     SELECT
@@ -208,11 +209,21 @@ raw_non_aggregator_rows AS (
       AND t.amount_usd >= {min_trade}
       AND upper(coalesce(t.token_bought_symbol, '')) IN (SELECT symbol FROM approved_symbols)
       AND upper(coalesce(t.token_sold_symbol, '')) IN (SELECT symbol FROM approved_symbols)
+      AND upper(coalesce(t.token_bought_symbol, '')) <> upper(coalesce(t.token_sold_symbol, ''))
 ),
 raw AS (
     SELECT * FROM aggregator_rows
     UNION ALL
     SELECT * FROM raw_non_aggregator_rows
+),
+intent_rows AS (
+    SELECT
+        *,
+        row_number() OVER (
+            PARTITION BY blockchain, tx_hash, wallet, sold_symbol
+            ORDER BY source_priority ASC, amount_usd DESC
+        ) AS intent_rank
+    FROM raw
 ),
 dedup AS (
     SELECT
@@ -229,7 +240,8 @@ dedup AS (
             PARTITION BY blockchain, tx_hash, wallet, bought_symbol, sold_symbol
             ORDER BY source_priority ASC, amount_usd DESC
         ) AS rn
-    FROM raw
+    FROM intent_rows
+    WHERE intent_rank = 1
 )
 SELECT
     block_time,
