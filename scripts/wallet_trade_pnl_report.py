@@ -157,7 +157,13 @@ def build_sql(wallets: list[str], days: int, min_trade_usd: Decimal) -> str:
 WITH selected_wallets(wallet) AS (
     VALUES {", ".join(f"({wallet})" for wallet in wallet_literals.split(", "))}
 ),
-raw AS (
+approved_symbols(symbol) AS (
+    VALUES
+        ('BTC'), ('WBTC'), ('CBBTC'), ('ETH'), ('WETH'), ('SOL'), ('LINK'), ('AVAX'),
+        ('ARB'), ('OP'), ('UNI'), ('AAVE'), ('MATIC'), ('POL'), ('LDO'), ('PENDLE'),
+        ('USDT'), ('USDC'), ('DAI'), ('USDE'), ('USDS')
+),
+aggregator_rows AS (
     SELECT
         t.block_time,
         t.blockchain,
@@ -167,21 +173,46 @@ raw AS (
         upper(coalesce(t.token_sold_symbol, '')) AS sold_symbol,
         t.token_bought_amount AS bought_amount,
         t.token_sold_amount AS sold_amount,
-        t.amount_usd
-    FROM dex.trades t
+        t.amount_usd,
+        1 AS source_priority
+    FROM dex_aggregator.trades t
     JOIN selected_wallets w ON w.wallet = t.tx_from
     WHERE t.block_date >= current_date - interval '{days}' day
       AND t.block_time >= now() - interval '{days}' day
       AND t.blockchain IN ('ethereum', 'arbitrum', 'base', 'optimism')
       AND t.amount_usd >= {min_trade}
-      AND upper(coalesce(t.token_bought_symbol, '')) IN (
-          'BTC', 'WBTC', 'CBBTC', 'ETH', 'WETH', 'SOL', 'LINK', 'AVAX',
-          'USDT', 'USDC', 'DAI', 'USDE'
-      )
-      AND upper(coalesce(t.token_sold_symbol, '')) IN (
-          'BTC', 'WBTC', 'CBBTC', 'ETH', 'WETH', 'SOL', 'LINK', 'AVAX',
-          'USDT', 'USDC', 'DAI', 'USDE'
-      )
+      AND upper(coalesce(t.token_bought_symbol, '')) IN (SELECT symbol FROM approved_symbols)
+      AND upper(coalesce(t.token_sold_symbol, '')) IN (SELECT symbol FROM approved_symbols)
+),
+raw_non_aggregator_rows AS (
+    SELECT
+        t.block_time,
+        t.blockchain,
+        concat('0x', lower(to_hex(t.tx_hash))) AS tx_hash,
+        concat('0x', lower(to_hex(t.tx_from))) AS wallet,
+        upper(coalesce(t.token_bought_symbol, '')) AS bought_symbol,
+        upper(coalesce(t.token_sold_symbol, '')) AS sold_symbol,
+        t.token_bought_amount AS bought_amount,
+        t.token_sold_amount AS sold_amount,
+        t.amount_usd,
+        2 AS source_priority
+    FROM dex.trades t
+    JOIN selected_wallets w ON w.wallet = t.tx_from
+    LEFT JOIN dex_aggregator.trades a
+      ON a.blockchain = t.blockchain
+     AND a.tx_hash = t.tx_hash
+    WHERE t.block_date >= current_date - interval '{days}' day
+      AND t.block_time >= now() - interval '{days}' day
+      AND a.tx_hash IS NULL
+      AND t.blockchain IN ('ethereum', 'arbitrum', 'base', 'optimism')
+      AND t.amount_usd >= {min_trade}
+      AND upper(coalesce(t.token_bought_symbol, '')) IN (SELECT symbol FROM approved_symbols)
+      AND upper(coalesce(t.token_sold_symbol, '')) IN (SELECT symbol FROM approved_symbols)
+),
+raw AS (
+    SELECT * FROM aggregator_rows
+    UNION ALL
+    SELECT * FROM raw_non_aggregator_rows
 ),
 dedup AS (
     SELECT
@@ -196,7 +227,7 @@ dedup AS (
         amount_usd,
         row_number() OVER (
             PARTITION BY blockchain, tx_hash, wallet, bought_symbol, sold_symbol
-            ORDER BY amount_usd DESC
+            ORDER BY source_priority ASC, amount_usd DESC
         ) AS rn
     FROM raw
 )
