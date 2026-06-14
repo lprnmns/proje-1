@@ -308,15 +308,21 @@ public sealed class HyperliquidCopyTradingService : IHyperliquidCopyTradingServi
 
                 var alreadyCopied = existing?.Status == "COPIED";
                 var alreadyBelowMinimum = existing?.Status == "SKIPPED_BELOW_MIN";
-                var isNewLivePosition =
-                    !isInitialSync &&
-                    (existing == null || existing.Status == "CLOSED");
-                var canAdopt = alreadyCopied ||
-                    alreadyBelowMinimum ||
-                    isNewLivePosition ||
-                    isInitialSync &&
-                    trader.CopyActiveOnEnable &&
-                    (!trader.AdoptActiveOnlyWhenNegative || position.UnrealizedPnlUsd <= 0);
+                var hasNewFill = newFills.Any(fill =>
+                    string.Equals(
+                        HyperliquidSymbolMapper.ToOkxSymbol(fill.Coin),
+                        position.OkxSymbol,
+                        StringComparison.OrdinalIgnoreCase));
+                var canAdopt = HyperliquidCopyAdoptionPolicy.ShouldAdopt(
+                    alreadyCopied,
+                    alreadyBelowMinimum,
+                    existing == null,
+                    existing?.Status == "CLOSED",
+                    isInitialSync,
+                    trader.CopyActiveOnEnable,
+                    trader.AdoptActiveOnlyWhenNegative,
+                    position.UnrealizedPnlUsd,
+                    hasNewFill);
 
                 if (canAdopt)
                 {
