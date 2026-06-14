@@ -304,6 +304,10 @@ def build_score(
     gate_reasons: list[str] = []
     if account_value < Decimal("30000"):
         gate_reasons.append("account_lt_30k")
+    if okx_return < target_return:
+        gate_reasons.append(
+            "okx_return_lt_3pct_30d" if days <= 45 else "okx_return_lt_10pct_90d"
+        )
     if closed_count < 8:
         gate_reasons.append("closed_positions_lt_8")
     if okx_count < 4:

@@ -1561,7 +1561,7 @@ function App() {
                     <strong>{shortAddress(trader.address)}</strong>
                     <span>{trader.verdict || 'review'} · account ${trader.account_value_usd || trader.current_account_value_usd || '--'}</span>
                     <small>
-                      net ${trader.net_closed_pnl_usd || '--'} · copyable ${trader.copyable_position_net_pnl_usd || '--'} · closed {trader.closed_position_count || '0'}
+                      net ${trader.net_closed_pnl_usd || '--'} · OKX ${trader.okx_tradable_net_pnl_usd ?? trader.copyable_position_net_pnl_usd ?? '--'} · closed {trader.okx_tradable_closed_positions ?? trader.closed_position_count ?? '0'}
                     </small>
                   </button>
                 ))}
@@ -1585,7 +1585,7 @@ function App() {
                   <div className="hyper-summary-grid">
                     <div><span>Account</span><strong>${hyperTraderDetail.summary.account_value_usd || '--'}</strong></div>
                     <div><span>Net PnL</span><strong>${hyperTraderDetail.summary.net_closed_pnl_usd || '--'}</strong></div>
-                    <div><span>Copyable PnL</span><strong>${hyperTraderDetail.summary.copyable_position_net_pnl_usd || '--'}</strong></div>
+                    <div><span>OKX-tradable PnL</span><strong>${hyperTraderDetail.summary.okx_tradable_net_pnl_usd ?? hyperTraderDetail.summary.copyable_position_net_pnl_usd ?? '--'}</strong></div>
                     <div><span>Win rate</span><strong>{hyperTraderDetail.summary.position_win_rate_pct || '--'}%</strong></div>
                   </div>
 

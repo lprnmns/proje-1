@@ -44,17 +44,17 @@ public sealed class HyperliquidReportsController : ControllerBase
         var summaryCsv = Path.Combine(run.FullName, "trader_summaries.csv");
         if (System.IO.File.Exists(summaryCsv))
         {
-            return Ok(ReadCsv(summaryCsv)
-                .OrderByDescending(x => DecimalValue(x, "copyable_position_net_pnl_usd"))
+            return Ok(MergeHistoricalScores(run, ReadCsv(summaryCsv))
+                .OrderByDescending(x => DecimalValue(x, "okx_tradable_net_pnl_usd"))
                 .ThenByDescending(x => DecimalValue(x, "net_closed_pnl_usd"))
                 .ToList());
         }
 
-        var summaries = run.GetDirectories()
+        var summaries = MergeHistoricalScores(run, run.GetDirectories()
             .Where(IsAddressDirectory)
             .Select(directory => ReadSummary(directory))
-            .Where(row => row.Count > 0)
-            .OrderByDescending(row => DecimalValue(row, "copyable_position_net_pnl_usd"))
+            .Where(row => row.Count > 0))
+            .OrderByDescending(row => DecimalValue(row, "okx_tradable_net_pnl_usd"))
             .ThenByDescending(row => DecimalValue(row, "net_closed_pnl_usd"))
             .ToList();
         return Ok(summaries);
@@ -106,10 +106,11 @@ public sealed class HyperliquidReportsController : ControllerBase
         }
 
         limit = Math.Clamp(limit, 20, 1000);
+        var summary = MergeHistoricalScores(run, new[] { ReadSummary(directory) }).First();
         return Ok(new
         {
             address = address.ToLowerInvariant(),
-            summary = ReadSummary(directory),
+            summary,
             activePositions = ReadCsv(Path.Combine(directory.FullName, "active_positions.csv")).Take(limit),
             closedPositions = ReadCsv(Path.Combine(directory.FullName, "closed_positions.csv")).Take(limit),
             positionEvents = ReadCsv(Path.Combine(directory.FullName, "position_events.csv")).Take(limit),
@@ -147,6 +148,31 @@ public sealed class HyperliquidReportsController : ControllerBase
 
     private static string HistoricalScoreboardPath(DirectoryInfo run) =>
         Path.Combine(run.FullName, "historical_scoreboard", "historical_scoreboard.csv");
+
+    private static IEnumerable<Dictionary<string, string>> MergeHistoricalScores(
+        DirectoryInfo run,
+        IEnumerable<Dictionary<string, string>> summaries)
+    {
+        var scores = ReadCsv(HistoricalScoreboardPath(run))
+            .Where(row => row.TryGetValue("address", out var address) && !string.IsNullOrWhiteSpace(address))
+            .ToDictionary(row => row["address"], StringComparer.OrdinalIgnoreCase);
+
+        foreach (var summary in summaries)
+        {
+            if (summary.TryGetValue("address", out var address) &&
+                scores.TryGetValue(address, out var score))
+            {
+                foreach (var item in score.Where(item =>
+                    item.Key.StartsWith("okx_", StringComparison.OrdinalIgnoreCase) ||
+                    item.Key is "historical_quality_score" or "confidence_score" or "rank"))
+                {
+                    summary[item.Key] = item.Value;
+                }
+            }
+
+            yield return summary;
+        }
+    }
 
     private static bool IsAddressDirectory(DirectoryInfo directory) => IsAddress(directory.Name);
 
