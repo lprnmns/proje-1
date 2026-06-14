@@ -179,6 +179,82 @@ type HyperliquidTraderDetail = {
   fills: Array<Record<string, string>>
 }
 
+type HyperliquidLiveTraderScore = {
+  traderAddress: string
+  label: string
+  isEnabled: boolean
+  executeOrders: boolean
+  liveScore: number
+  confidence: number
+  realizedPnlUsd: number
+  unrealizedPnlUsd: number
+  netPnlUsd: number
+  pnlPctAccount: number
+  closedPositions: number
+  activePositions: number
+  wins: number
+  losses: number
+  winRate: number
+  okxCopyablePositions: number
+  copiedPositions: number
+  skippedPositions: number
+  avgHoldSeconds: number
+  bestTradeUsd: number
+  worstTradeUsd: number
+  scoredAt: string
+}
+
+type HyperliquidLivePosition = {
+  id: number
+  traderAddress: string
+  coin: string
+  okxSymbol: string
+  side: string
+  status: string
+  openedAt: string
+  lastSeenAt: string
+  closedAt?: string
+  entryPrice: number
+  exitPrice: number
+  currentSize: number
+  maxSize: number
+  currentNotionalUsd: number
+  maxNotionalUsd: number
+  positionPctOfAccount: number
+  unrealizedPnlUsd: number
+  realizedPnlUsd: number
+  feeUsd: number
+  netPnlUsd: number
+  openedFromTracking: boolean
+  isOkxTradable: boolean
+  copyStatus: string
+  skipReason: string
+  durationSeconds: number
+  pnlPctAccount: number
+  pnlPctNotional: number
+}
+
+type HyperliquidLiveFill = {
+  traderAddress: string
+  coin: string
+  okxSymbol: string
+  direction: string
+  side: string
+  price: number
+  size: number
+  closedPnlUsd: number
+  feeUsd: number
+  exchangeTime: string
+}
+
+type HyperliquidLiveLeaderboard = {
+  checkedAt: string
+  traders: HyperliquidLiveTraderScore[]
+  activePositions: HyperliquidLivePosition[]
+  closedPositions: HyperliquidLivePosition[]
+  recentFills: HyperliquidLiveFill[]
+}
+
 type GraphNode = {
   id: string
   name: string
@@ -320,6 +396,14 @@ function formatTime(value?: string) {
   return new Date(value).toLocaleString()
 }
 
+function formatDuration(seconds?: number) {
+  const value = Number(seconds || 0)
+  if (!Number.isFinite(value) || value <= 0) return '--'
+  if (value >= 86400) return `${(value / 86400).toFixed(1)}d`
+  if (value >= 3600) return `${(value / 3600).toFixed(1)}h`
+  return `${Math.max(1, Math.round(value / 60))}m`
+}
+
 function parsePayload(event?: LiveEvent) {
   if (!event?.payloadJson) return null
   try {
@@ -449,6 +533,7 @@ function App() {
   const [selectedHyperScore, setSelectedHyperScore] = useState<HyperliquidScoreRow | null>(null)
   const [selectedHyperTrader, setSelectedHyperTrader] = useState<HyperliquidTraderSummary | null>(null)
   const [hyperTraderDetail, setHyperTraderDetail] = useState<HyperliquidTraderDetail | null>(null)
+  const [hyperLive, setHyperLive] = useState<HyperliquidLiveLeaderboard | null>(null)
   const [isDiscoveryRunning, setIsDiscoveryRunning] = useState(false)
   const [isTraderScanRunning, setIsTraderScanRunning] = useState(false)
   const [selected, setSelected] = useState<GraphNode | null>(null)
@@ -675,6 +760,14 @@ function App() {
     setHyperTraderDetail(await fetchJson<HyperliquidTraderDetail>(`/api/hyperliquid-reports/runs/${activeHyperRun.id}/traders/${row.address}`))
   }
 
+  const loadHyperLiveLeaderboard = useCallback(async () => {
+    try {
+      setHyperLive(await fetchJson<HyperliquidLiveLeaderboard>('/api/hyperliquid-copy/live-leaderboard'))
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : 'Hyperliquid live leaderboard unavailable')
+    }
+  }, [])
+
   useEffect(() => {
     loadMissionState()
     const timer = window.setInterval(loadMissionState, 30000)
@@ -684,6 +777,12 @@ function App() {
   useEffect(() => {
     loadHyperRuns()
   }, [])
+
+  useEffect(() => {
+    loadHyperLiveLeaderboard()
+    const timer = window.setInterval(loadHyperLiveLeaderboard, 15000)
+    return () => window.clearInterval(timer)
+  }, [loadHyperLiveLeaderboard])
 
   useEffect(() => {
     const connection = new HubConnectionBuilder()
@@ -1511,6 +1610,92 @@ function App() {
               <button className="primary-action" onClick={loadHyperRuns}>
                 <RefreshCw size={16} /> Refresh reports
               </button>
+
+              <div className="section-heading">
+                <strong>Live Leaderboard</strong>
+                <span>
+                  {hyperLive ? `Updated ${formatTime(hyperLive.checkedAt)}` : 'Waiting for live copy worker data'} · source, copy state, and closed trade metrics from now onward.
+                </span>
+              </div>
+              <button className="primary-action secondary-action" onClick={loadHyperLiveLeaderboard}>
+                <RefreshCw size={16} /> Refresh live leaderboard
+              </button>
+              <div className="hyper-score-list">
+                {!hyperLive || hyperLive.traders.length === 0 ? <p className="muted">No live score snapshots yet. Enabled Hyperliquid traders will appear after the worker syncs.</p> : null}
+                {hyperLive?.traders.slice(0, 30).map((row, index) => (
+                  <div className="hyper-score-row live-score-row" key={row.traderAddress}>
+                    <div className="score-rank">
+                      <strong>#{index + 1}</strong>
+                      <span>{row.executeOrders ? 'real' : row.isEnabled ? 'shadow' : 'off'}</span>
+                    </div>
+                    <div>
+                      <strong>{row.label || shortAddress(row.traderAddress)}</strong>
+                      <span>Live {row.liveScore.toFixed(1)} · conf {row.confidence.toFixed(1)} · net {formatUsd(row.netPnlUsd)} · acct {row.pnlPctAccount.toFixed(2)}%</span>
+                      <small>
+                        active {row.activePositions} · closed {row.closedPositions} · win {row.winRate.toFixed(1)}% · copied {row.copiedPositions} · skipped {row.skippedPositions}
+                      </small>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="section-heading">
+                <strong>Live active positions</strong>
+                <span>Current source exposure for tracked Hyperliquid traders.</span>
+              </div>
+              <div className="compact-table">
+                <div className="table-head live-six"><span>Trader</span><span>Coin</span><span>Side</span><span>Value</span><span>uPnL</span><span>Age</span></div>
+                {hyperLive?.activePositions.slice(0, 40).map((position) => (
+                  <div className="table-row live-six" key={`live-${position.id}`}>
+                    <span>{shortAddress(position.traderAddress)}</span>
+                    <span>{position.okxSymbol || position.coin}</span>
+                    <span>{position.side} {position.openedFromTracking ? 'live' : 'base'}</span>
+                    <span>{formatUsd(position.currentNotionalUsd)} · {position.positionPctOfAccount.toFixed(2)}%</span>
+                    <strong>{formatUsd(position.unrealizedPnlUsd)}</strong>
+                    <span>{formatDuration(position.durationSeconds)}</span>
+                  </div>
+                ))}
+                {(!hyperLive || hyperLive.activePositions.length === 0) && <p className="muted">No live active positions recorded yet.</p>}
+              </div>
+
+              <div className="section-heading">
+                <strong>Live closed positions</strong>
+                <span>Positions closed after tracking started, with source PnL and duration.</span>
+              </div>
+              <div className="compact-table">
+                <div className="table-head live-six"><span>Trader</span><span>Coin</span><span>Side</span><span>Hold</span><span>Entry → Exit</span><span>Net</span></div>
+                {hyperLive?.closedPositions.slice(0, 40).map((position) => (
+                  <div className="table-row live-six" key={`closed-${position.id}`}>
+                    <span>{shortAddress(position.traderAddress)}</span>
+                    <span>{position.okxSymbol || position.coin}</span>
+                    <span>{position.side}</span>
+                    <span>{formatDuration(position.durationSeconds)}</span>
+                    <span>{Number(position.entryPrice || 0).toFixed(4)} → {Number(position.exitPrice || 0).toFixed(4)}</span>
+                    <strong>{formatUsd(position.netPnlUsd)} · {position.pnlPctAccount.toFixed(3)}%</strong>
+                  </div>
+                ))}
+                {(!hyperLive || hyperLive.closedPositions.length === 0) && <p className="muted">No live closed positions yet.</p>}
+              </div>
+
+              <div className="section-heading">
+                <strong>Recent Hyperliquid fills</strong>
+                <span>Raw live fills detected by the worker and used for reconstruction.</span>
+              </div>
+              <div className="compact-table">
+                <div className="table-head live-six"><span>Time</span><span>Trader</span><span>Coin</span><span>Dir</span><span>Price</span><span>PnL</span></div>
+                {hyperLive?.recentFills.slice(0, 40).map((fill, index) => (
+                  <div className="table-row live-six" key={`fill-${fill.traderAddress}-${fill.exchangeTime}-${index}`}>
+                    <span>{formatTime(fill.exchangeTime)}</span>
+                    <span>{shortAddress(fill.traderAddress)}</span>
+                    <span>{fill.okxSymbol || fill.coin}</span>
+                    <span>{fill.direction || fill.side}</span>
+                    <span>{Number(fill.price || 0).toFixed(4)}</span>
+                    <strong>{formatUsd(fill.closedPnlUsd - fill.feeUsd)}</strong>
+                  </div>
+                ))}
+                {(!hyperLive || hyperLive.recentFills.length === 0) && <p className="muted">No live fills recorded yet.</p>}
+              </div>
+
               <div className="scan-list">
                 {hyperRuns.length === 0 && <p className="muted">No Hyperliquid profile reports found yet.</p>}
                 {hyperRuns.map((run) => (

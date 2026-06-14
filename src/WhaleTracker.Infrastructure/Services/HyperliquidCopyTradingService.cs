@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +30,7 @@ public sealed class HyperliquidCopyTradingService : IHyperliquidCopyTradingServi
     private readonly HttpClient _httpClient;
     private readonly ICopyTradingService _copyTradingService;
     private readonly IOkxService _okxService;
+    private readonly INotificationService _notificationService;
     private readonly ILogger<HyperliquidCopyTradingService> _logger;
 
     public HyperliquidCopyTradingService(
@@ -35,12 +38,14 @@ public sealed class HyperliquidCopyTradingService : IHyperliquidCopyTradingServi
         HttpClient httpClient,
         ICopyTradingService copyTradingService,
         IOkxService okxService,
+        INotificationService notificationService,
         ILogger<HyperliquidCopyTradingService> logger)
     {
         _db = db;
         _httpClient = httpClient;
         _copyTradingService = copyTradingService;
         _okxService = okxService;
+        _notificationService = notificationService;
         _logger = logger;
     }
 
@@ -73,6 +78,61 @@ public sealed class HyperliquidCopyTradingService : IHyperliquidCopyTradingServi
             Traders = traders.Select(MapTrader).ToList(),
             Positions = positions.Select(MapPosition).ToList(),
             RecentEvents = events.Select(MapEvent).ToList()
+        };
+    }
+
+    public async Task<HyperliquidLiveLeaderboardResponse> GetLiveLeaderboardAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var traderRows = await _db.HyperliquidCopyTraders
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+        var traders = traderRows.ToDictionary(x => x.Address, StringComparer.OrdinalIgnoreCase);
+
+        var latestScores = (await _db.HyperliquidLiveScoreSnapshots
+                .AsNoTracking()
+                .OrderByDescending(x => x.ScoredAt)
+                .ThenByDescending(x => x.Id)
+                .Take(1000)
+                .ToListAsync(cancellationToken))
+            .GroupBy(x => x.TraderAddress, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .OrderByDescending(x => x.LiveScore)
+            .ThenByDescending(x => x.Confidence)
+            .ThenByDescending(x => x.NetPnlUsd)
+            .ToList();
+
+        var active = await _db.HyperliquidLivePositions
+            .AsNoTracking()
+            .Where(x => x.Status == "LIVE_OPEN" || x.Status == "BASELINE_OPEN")
+            .OrderByDescending(x => x.LastSeenAt)
+            .Take(200)
+            .ToListAsync(cancellationToken);
+
+        var closed = await _db.HyperliquidLivePositions
+            .AsNoTracking()
+            .Where(x => x.Status == "CLOSED")
+            .OrderByDescending(x => x.ClosedAt ?? x.UpdatedAt)
+            .Take(200)
+            .ToListAsync(cancellationToken);
+
+        var fills = await _db.HyperliquidLiveFills
+            .AsNoTracking()
+            .OrderByDescending(x => x.ExchangeTime)
+            .Take(200)
+            .ToListAsync(cancellationToken);
+
+        return new HyperliquidLiveLeaderboardResponse
+        {
+            CheckedAt = DateTime.UtcNow,
+            Traders = latestScores.Select(score =>
+            {
+                traders.TryGetValue(score.TraderAddress, out var trader);
+                return MapLiveScore(score, trader);
+            }).ToList(),
+            ActivePositions = active.Select(MapLivePosition).ToList(),
+            ClosedPositions = closed.Select(MapLivePosition).ToList(),
+            RecentFills = fills.Select(MapLiveFill).ToList()
         };
     }
 
@@ -290,6 +350,24 @@ public sealed class HyperliquidCopyTradingService : IHyperliquidCopyTradingServi
             var currentKeys = copyableActive
                 .Select(x => PositionKey(address, x.OkxSymbol, SideFromSize(x.Size)))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            await RecordLiveFillsAsync(address, newFills, cancellationToken);
+            foreach (var position in copyableActive)
+            {
+                var hasNewFill = newFills.Any(fill =>
+                    string.Equals(
+                        HyperliquidSymbolMapper.ToOkxSymbol(fill.Coin),
+                        position.OkxSymbol,
+                        StringComparison.OrdinalIgnoreCase));
+                await UpsertLivePositionAsync(
+                    address,
+                    position,
+                    sourceAccountValue,
+                    supportedSymbols.Contains(position.OkxSymbol),
+                    isInitialSync,
+                    hasNewFill,
+                    cancellationToken);
+            }
 
             var existingPositions = await _db.HyperliquidCopyPositions
                 .Where(x => x.TraderAddress == address)
@@ -555,6 +633,9 @@ public sealed class HyperliquidCopyTradingService : IHyperliquidCopyTradingServi
                     cancellationToken);
             }
 
+            await CloseMissingLivePositionsAsync(address, currentKeys, cancellationToken);
+            await RefreshLiveScoreAsync(address, cancellationToken);
+
             trader.LastSyncAt = DateTime.UtcNow;
             trader.LastError = string.Empty;
             trader.UpdatedAt = DateTime.UtcNow;
@@ -575,10 +656,17 @@ public sealed class HyperliquidCopyTradingService : IHyperliquidCopyTradingServi
         }
         catch (Exception ex)
         {
-            trader.LastError = ex.Message;
-            trader.LastSyncAt = DateTime.UtcNow;
-            trader.UpdatedAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync(cancellationToken);
+            _db.ChangeTracker.Clear();
+            var failedTrader = await _db.HyperliquidCopyTraders
+                .FirstOrDefaultAsync(x => x.Address == address, cancellationToken);
+            if (failedTrader != null)
+            {
+                failedTrader.LastError = ex.Message;
+                failedTrader.LastSyncAt = DateTime.UtcNow;
+                failedTrader.UpdatedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+
             _logger.LogWarning(ex, "Hyperliquid copy sync failed for {Address}", address);
             return new HyperliquidCopyTraderSyncResult
             {
@@ -602,6 +690,258 @@ public sealed class HyperliquidCopyTradingService : IHyperliquidCopyTradingServi
             new HyperliquidFillsRequest("userFillsByTime", address, start, nowMs),
             cancellationToken);
         return fills.OrderBy(x => x.Time).ToList();
+    }
+
+    private async Task RecordLiveFillsAsync(
+        string address,
+        IReadOnlyList<HyperliquidFill> fills,
+        CancellationToken cancellationToken)
+    {
+        if (fills.Count == 0)
+        {
+            return;
+        }
+
+        var keys = fills
+            .Select(fill => LiveFillDedupeKey(address, fill))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var existingKeys = await _db.HyperliquidLiveFills
+            .AsNoTracking()
+            .Where(x => keys.Contains(x.DedupeKey))
+            .Select(x => x.DedupeKey)
+            .ToListAsync(cancellationToken);
+        var existingSet = existingKeys.ToHashSet(StringComparer.Ordinal);
+
+        foreach (var fill in fills)
+        {
+            var key = LiveFillDedupeKey(address, fill);
+            if (existingSet.Contains(key))
+            {
+                continue;
+            }
+
+            existingSet.Add(key);
+            var exchangeTime = DateTimeOffset
+                .FromUnixTimeMilliseconds(fill.Time)
+                .UtcDateTime;
+            _db.HyperliquidLiveFills.Add(new HyperliquidLiveFillEntity
+            {
+                TraderAddress = address,
+                Coin = fill.Coin.ToUpperInvariant(),
+                OkxSymbol = HyperliquidSymbolMapper.ToOkxSymbol(fill.Coin),
+                Side = FillPositionSide(fill),
+                Direction = fill.Dir,
+                Price = ParseDecimal(fill.Px),
+                Size = Math.Abs(ParseDecimal(fill.Sz)),
+                ClosedPnlUsd = ParseDecimal(fill.ClosedPnl),
+                FeeUsd = Math.Abs(ParseDecimal(fill.Fee)),
+                ExchangeTimeMs = fill.Time,
+                ExchangeTime = exchangeTime,
+                DedupeKey = key,
+                RawPayload = JsonSerializer.Serialize(fill),
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        var closeFills = fills
+            .Where(fill => FillIsClose(fill))
+            .Take(5)
+            .ToList();
+        foreach (var fill in closeFills)
+        {
+            await _notificationService.SendAsync(
+                "Hyperliquid close fill",
+                $"{ShortAddress(address)} {fill.Coin} {fill.Dir} @ {fill.Px} pnl ${ParseDecimal(fill.ClosedPnl):0.##} fee ${Math.Abs(ParseDecimal(fill.Fee)):0.####}",
+                cancellationToken);
+        }
+    }
+
+    private async Task UpsertLivePositionAsync(
+        string address,
+        HyperliquidPosition position,
+        decimal sourceAccountValue,
+        bool isOkxTradable,
+        bool isInitialSync,
+        bool hasNewFill,
+        CancellationToken cancellationToken)
+    {
+        var side = SideFromSize(position.Size);
+        var now = DateTime.UtcNow;
+        var existing = await _db.HyperliquidLivePositions
+            .Where(x =>
+                x.TraderAddress == address &&
+                x.OkxSymbol == position.OkxSymbol &&
+                x.Side == side &&
+                (x.Status == "LIVE_OPEN" || x.Status == "BASELINE_OPEN"))
+            .OrderByDescending(x => x.OpenedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var openedFromTracking = !isInitialSync || hasNewFill;
+        if (existing == null)
+        {
+            existing = new HyperliquidLivePositionEntity
+            {
+                TraderAddress = address,
+                Coin = position.Coin.ToUpperInvariant(),
+                OkxSymbol = position.OkxSymbol,
+                Side = side,
+                Status = openedFromTracking ? "LIVE_OPEN" : "BASELINE_OPEN",
+                OpenedAt = now,
+                FirstSeenAt = now,
+                SourceAccountValueAtOpen = sourceAccountValue,
+                EntryPrice = position.EntryPrice,
+                OpenedFromTracking = openedFromTracking,
+                CreatedAt = now
+            };
+            _db.HyperliquidLivePositions.Add(existing);
+
+            if (openedFromTracking)
+            {
+                await _notificationService.SendAsync(
+                    "Hyperliquid live position opened",
+                    $"{ShortAddress(address)} {position.Coin}->{position.OkxSymbol} {side.ToUpperInvariant()} notional ${Math.Abs(position.PositionValueUsd):0.##} entry {position.EntryPrice:0.####} account ${sourceAccountValue:0.##}",
+                    cancellationToken);
+            }
+        }
+
+        existing.Coin = position.Coin.ToUpperInvariant();
+        existing.OkxSymbol = position.OkxSymbol;
+        existing.LastSeenAt = now;
+        existing.EntryPrice = existing.EntryPrice <= 0 ? position.EntryPrice : existing.EntryPrice;
+        existing.CurrentSize = Math.Abs(position.Size);
+        existing.MaxSize = Math.Max(existing.MaxSize, Math.Abs(position.Size));
+        existing.CurrentNotionalUsd = Math.Abs(position.PositionValueUsd);
+        existing.MaxNotionalUsd = Math.Max(existing.MaxNotionalUsd, Math.Abs(position.PositionValueUsd));
+        existing.LatestSourceAccountValueUsd = sourceAccountValue;
+        existing.PositionPctOfAccount = sourceAccountValue > 0
+            ? Math.Abs(position.PositionValueUsd) / sourceAccountValue * 100m
+            : 0m;
+        existing.UnrealizedPnlUsd = position.UnrealizedPnlUsd;
+        existing.IsOkxTradable = isOkxTradable;
+        existing.CopyStatus = isOkxTradable ? "OKX_TRADABLE" : "NOT_OKX_TRADABLE";
+        existing.UpdatedAt = now;
+    }
+
+    private async Task CloseMissingLivePositionsAsync(
+        string address,
+        HashSet<string> currentKeys,
+        CancellationToken cancellationToken)
+    {
+        var openPositions = await _db.HyperliquidLivePositions
+            .Where(x =>
+                x.TraderAddress == address &&
+                (x.Status == "LIVE_OPEN" || x.Status == "BASELINE_OPEN"))
+            .ToListAsync(cancellationToken);
+
+        foreach (var position in openPositions)
+        {
+            if (currentKeys.Contains(PositionKey(address, position.OkxSymbol, position.Side)))
+            {
+                continue;
+            }
+
+            var fills = await _db.HyperliquidLiveFills
+                .Where(x =>
+                    x.TraderAddress == address &&
+                    x.OkxSymbol == position.OkxSymbol &&
+                    x.ExchangeTime >= position.OpenedAt)
+                .OrderBy(x => x.ExchangeTime)
+                .ToListAsync(cancellationToken);
+            var closeFills = fills.Where(fill =>
+                fill.Direction.Contains("Close", StringComparison.OrdinalIgnoreCase) &&
+                fill.Side.Equals(position.Side, StringComparison.OrdinalIgnoreCase)).ToList();
+            var lastClose = closeFills.LastOrDefault();
+            var now = DateTime.UtcNow;
+
+            position.Status = "CLOSED";
+            position.ClosedAt = lastClose?.ExchangeTime ?? now;
+            position.ExitPrice = lastClose?.Price ?? 0;
+            position.RealizedPnlUsd = closeFills.Sum(x => x.ClosedPnlUsd);
+            position.FeeUsd = fills.Sum(x => x.FeeUsd);
+            position.NetPnlUsd = position.RealizedPnlUsd - position.FeeUsd;
+            position.CurrentSize = 0;
+            position.CurrentNotionalUsd = 0;
+            position.UnrealizedPnlUsd = 0;
+            position.UpdatedAt = now;
+
+            await _notificationService.SendAsync(
+                "Hyperliquid position closed",
+                $"{ShortAddress(address)} {position.OkxSymbol} {position.Side.ToUpperInvariant()} duration {FormatDuration(position.ClosedAt.Value - position.OpenedAt)} net ${position.NetPnlUsd:0.##} source {(position.OpenedFromTracking ? "live" : "baseline")}",
+                cancellationToken);
+        }
+    }
+
+    private async Task RefreshLiveScoreAsync(string address, CancellationToken cancellationToken)
+    {
+        var positions = await _db.HyperliquidLivePositions
+            .Where(x => x.TraderAddress == address)
+            .ToListAsync(cancellationToken);
+        var closed = positions.Where(x => x.Status == "CLOSED" && x.OpenedFromTracking).ToList();
+        var active = positions.Where(x => x.Status == "LIVE_OPEN" || x.Status == "BASELINE_OPEN").ToList();
+        var wins = closed.Count(x => x.NetPnlUsd > 0);
+        var losses = closed.Count(x => x.NetPnlUsd < 0);
+        var closedCount = closed.Count;
+        var winRate = closedCount > 0 ? wins / (decimal)closedCount * 100m : 0m;
+        var realized = closed.Sum(x => x.NetPnlUsd);
+        var unrealized = active.Sum(x => x.UnrealizedPnlUsd);
+        var averageAccount = closed
+            .Where(x => x.SourceAccountValueAtOpen > 0)
+            .Select(x => x.SourceAccountValueAtOpen)
+            .DefaultIfEmpty(active.Select(x => x.LatestSourceAccountValueUsd).FirstOrDefault(x => x > 0))
+            .Average();
+        var pnlPctAccount = averageAccount > 0 ? realized / averageAccount * 100m : 0m;
+        var copyable = positions.Count(x => x.IsOkxTradable);
+        var copied = await _db.HyperliquidCopyPositions
+            .CountAsync(x => x.TraderAddress == address && x.Status == "COPIED", cancellationToken);
+        var skipped = await _db.HyperliquidCopyPositions
+            .CountAsync(x => x.TraderAddress == address && x.Status.StartsWith("SKIPPED"), cancellationToken);
+        var avgHoldSeconds = closed
+            .Where(x => x.ClosedAt != null)
+            .Select(x => (decimal)(x.ClosedAt!.Value - x.OpenedAt).TotalSeconds)
+            .DefaultIfEmpty(0)
+            .Average();
+        var best = closed.Select(x => x.NetPnlUsd).DefaultIfEmpty(0).Max();
+        var worst = closed.Select(x => x.NetPnlUsd).DefaultIfEmpty(0).Min();
+        var sampleScore = Math.Min(25m, closedCount * 3m + active.Count);
+        var pnlScore = Math.Clamp(17.5m + pnlPctAccount * 5m, 0m, 35m);
+        var winScore = closedCount > 0 ? Math.Clamp(winRate / 100m * 20m, 0m, 20m) : 0m;
+        var copyScore = positions.Count > 0
+            ? Math.Clamp(copyable / (decimal)positions.Count * 15m, 0m, 15m)
+            : 0m;
+        var liveScore = Math.Clamp(sampleScore + pnlScore + winScore + copyScore, 0m, 100m);
+        var confidence = Math.Clamp(closedCount * 5m + active.Count * 3m + copyable, 0m, 100m);
+
+        _db.HyperliquidLiveScoreSnapshots.Add(new HyperliquidLiveScoreSnapshotEntity
+        {
+            TraderAddress = address,
+            ScoredAt = DateTime.UtcNow,
+            LiveScore = liveScore,
+            Confidence = confidence,
+            RealizedPnlUsd = realized,
+            UnrealizedPnlUsd = unrealized,
+            NetPnlUsd = realized + unrealized,
+            PnlPctAccount = pnlPctAccount,
+            ClosedPositions = closedCount,
+            ActivePositions = active.Count,
+            Wins = wins,
+            Losses = losses,
+            WinRate = winRate,
+            OkxCopyablePositions = copyable,
+            CopiedPositions = copied,
+            SkippedPositions = skipped,
+            AvgHoldSeconds = avgHoldSeconds,
+            BestTradeUsd = best,
+            WorstTradeUsd = worst,
+            ScoreComponentsJson = JsonSerializer.Serialize(new
+            {
+                sampleScore,
+                pnlScore,
+                winScore,
+                copyScore,
+                averageAccount
+            })
+        });
     }
 
     private async Task<TResponse> FetchAsync<TRequest, TResponse>(
@@ -744,6 +1084,88 @@ public sealed class HyperliquidCopyTradingService : IHyperliquidCopyTradingServi
         CreatedAt = entity.CreatedAt
     };
 
+    private static HyperliquidLiveTraderScoreView MapLiveScore(
+        HyperliquidLiveScoreSnapshotEntity score,
+        HyperliquidCopyTraderEntity? trader) => new()
+    {
+        TraderAddress = score.TraderAddress,
+        Label = trader?.Label ?? ShortAddress(score.TraderAddress),
+        IsEnabled = trader?.IsEnabled ?? false,
+        ExecuteOrders = trader?.ExecuteOrders ?? false,
+        LiveScore = score.LiveScore,
+        Confidence = score.Confidence,
+        RealizedPnlUsd = score.RealizedPnlUsd,
+        UnrealizedPnlUsd = score.UnrealizedPnlUsd,
+        NetPnlUsd = score.NetPnlUsd,
+        PnlPctAccount = score.PnlPctAccount,
+        ClosedPositions = score.ClosedPositions,
+        ActivePositions = score.ActivePositions,
+        Wins = score.Wins,
+        Losses = score.Losses,
+        WinRate = score.WinRate,
+        OkxCopyablePositions = score.OkxCopyablePositions,
+        CopiedPositions = score.CopiedPositions,
+        SkippedPositions = score.SkippedPositions,
+        AvgHoldSeconds = score.AvgHoldSeconds,
+        BestTradeUsd = score.BestTradeUsd,
+        WorstTradeUsd = score.WorstTradeUsd,
+        ScoredAt = score.ScoredAt
+    };
+
+    private static HyperliquidLivePositionView MapLivePosition(HyperliquidLivePositionEntity entity)
+    {
+        var end = entity.ClosedAt ?? DateTime.UtcNow;
+        var durationSeconds = Math.Max(0, (decimal)(end - entity.OpenedAt).TotalSeconds);
+        return new HyperliquidLivePositionView
+        {
+            Id = entity.Id,
+            TraderAddress = entity.TraderAddress,
+            Coin = entity.Coin,
+            OkxSymbol = entity.OkxSymbol,
+            Side = entity.Side,
+            Status = entity.Status,
+            OpenedAt = entity.OpenedAt,
+            LastSeenAt = entity.LastSeenAt,
+            ClosedAt = entity.ClosedAt,
+            EntryPrice = entity.EntryPrice,
+            ExitPrice = entity.ExitPrice,
+            CurrentSize = entity.CurrentSize,
+            MaxSize = entity.MaxSize,
+            CurrentNotionalUsd = entity.CurrentNotionalUsd,
+            MaxNotionalUsd = entity.MaxNotionalUsd,
+            PositionPctOfAccount = entity.PositionPctOfAccount,
+            UnrealizedPnlUsd = entity.UnrealizedPnlUsd,
+            RealizedPnlUsd = entity.RealizedPnlUsd,
+            FeeUsd = entity.FeeUsd,
+            NetPnlUsd = entity.NetPnlUsd,
+            OpenedFromTracking = entity.OpenedFromTracking,
+            IsOkxTradable = entity.IsOkxTradable,
+            CopyStatus = entity.CopyStatus,
+            SkipReason = entity.SkipReason,
+            DurationSeconds = durationSeconds,
+            PnlPctAccount = entity.SourceAccountValueAtOpen > 0
+                ? entity.NetPnlUsd / entity.SourceAccountValueAtOpen * 100m
+                : 0m,
+            PnlPctNotional = entity.MaxNotionalUsd > 0
+                ? entity.NetPnlUsd / entity.MaxNotionalUsd * 100m
+                : 0m
+        };
+    }
+
+    private static HyperliquidLiveFillView MapLiveFill(HyperliquidLiveFillEntity entity) => new()
+    {
+        TraderAddress = entity.TraderAddress,
+        Coin = entity.Coin,
+        OkxSymbol = entity.OkxSymbol,
+        Direction = entity.Direction,
+        Side = entity.Side,
+        Price = entity.Price,
+        Size = entity.Size,
+        ClosedPnlUsd = entity.ClosedPnlUsd,
+        FeeUsd = entity.FeeUsd,
+        ExchangeTime = entity.ExchangeTime
+    };
+
     private static string NormalizeAddress(string value)
     {
         var address = value.Trim().ToLowerInvariant();
@@ -766,6 +1188,47 @@ public sealed class HyperliquidCopyTradingService : IHyperliquidCopyTradingServi
         $"hl-pos:{address}:{symbol.ToUpperInvariant()}:{side.ToLowerInvariant()}";
 
     private static string SideFromSize(decimal size) => size >= 0 ? "long" : "short";
+
+    private static string LiveFillDedupeKey(string address, HyperliquidFill fill)
+    {
+        var raw = JsonSerializer.Serialize(fill);
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw)))[..20];
+        return $"hl-fill:{address}:{fill.Time}:{fill.Coin}:{hash}";
+    }
+
+    private static bool FillIsClose(HyperliquidFill fill) =>
+        fill.Dir.Contains("Close", StringComparison.OrdinalIgnoreCase) ||
+        ParseDecimal(fill.ClosedPnl) != 0;
+
+    private static string FillPositionSide(HyperliquidFill fill)
+    {
+        if (fill.Dir.Contains("Short", StringComparison.OrdinalIgnoreCase))
+        {
+            return "short";
+        }
+
+        if (fill.Dir.Contains("Long", StringComparison.OrdinalIgnoreCase))
+        {
+            return "long";
+        }
+
+        return fill.Side.Equals("A", StringComparison.OrdinalIgnoreCase) ? "short" : "long";
+    }
+
+    private static string FormatDuration(TimeSpan value)
+    {
+        if (value.TotalDays >= 1)
+        {
+            return $"{value.TotalDays:0.0}d";
+        }
+
+        if (value.TotalHours >= 1)
+        {
+            return $"{value.TotalHours:0.0}h";
+        }
+
+        return $"{Math.Max(0, value.TotalMinutes):0}m";
+    }
 
     private sealed record HyperliquidStateRequest(
         [property: JsonPropertyName("type")] string Type,

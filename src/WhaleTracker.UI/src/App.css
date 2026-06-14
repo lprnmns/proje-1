@@ -652,6 +652,11 @@ input {
   background: rgba(14, 165, 233, 0.16);
 }
 
+.live-score-row {
+  border-color: rgba(45, 212, 191, 0.26);
+  background: rgba(13, 148, 136, 0.08);
+}
+
 .score-rank {
   display: grid;
   align-content: center;
@@ -735,6 +740,19 @@ input {
   color: #9fb4ca;
   font-size: 11px;
   line-height: 1.35;
+}
+
+.table-head.live-six,
+.table-row.live-six {
+  grid-template-columns: 1.1fr 0.8fr 0.8fr 1.2fr 1fr 0.8fr;
+}
+
+.table-row.live-six span,
+.table-row.live-six strong,
+.table-head.live-six span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hyper-summary-grid {

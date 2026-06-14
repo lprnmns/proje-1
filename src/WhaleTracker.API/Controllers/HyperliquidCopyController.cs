@@ -23,6 +23,12 @@ public class HyperliquidCopyController : ControllerBase
         return Ok(await _copyService.GetSnapshotAsync(cancellationToken));
     }
 
+    [HttpGet("live-leaderboard")]
+    public async Task<IActionResult> LiveLeaderboard(CancellationToken cancellationToken)
+    {
+        return Ok(await _copyService.GetLiveLeaderboardAsync(cancellationToken));
+    }
+
     [HttpPost("enable")]
     public async Task<IActionResult> Enable(
         [FromBody] HyperliquidCopyEnableRequest request,

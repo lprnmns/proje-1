@@ -70,6 +70,15 @@ public class WhaleTrackerDbContext : DbContext
     public DbSet<HyperliquidCopyEventEntity> HyperliquidCopyEvents =>
         Set<HyperliquidCopyEventEntity>();
 
+    public DbSet<HyperliquidLiveFillEntity> HyperliquidLiveFills =>
+        Set<HyperliquidLiveFillEntity>();
+
+    public DbSet<HyperliquidLivePositionEntity> HyperliquidLivePositions =>
+        Set<HyperliquidLivePositionEntity>();
+
+    public DbSet<HyperliquidLiveScoreSnapshotEntity> HyperliquidLiveScoreSnapshots =>
+        Set<HyperliquidLiveScoreSnapshotEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -210,6 +219,27 @@ public class WhaleTrackerDbContext : DbContext
             entity.HasIndex(e => e.TraderAddress);
             entity.HasIndex(e => new { e.Symbol, e.Side });
             entity.HasIndex(e => e.SourceEventId);
+        });
+
+        modelBuilder.Entity<HyperliquidLiveFillEntity>(entity =>
+        {
+            entity.HasIndex(e => e.DedupeKey).IsUnique();
+            entity.HasIndex(e => e.ExchangeTime);
+            entity.HasIndex(e => new { e.TraderAddress, e.Coin });
+        });
+
+        modelBuilder.Entity<HyperliquidLivePositionEntity>(entity =>
+        {
+            entity.HasIndex(e => new { e.TraderAddress, e.OkxSymbol, e.Side, e.Status });
+            entity.HasIndex(e => e.OpenedAt);
+            entity.HasIndex(e => e.ClosedAt);
+        });
+
+        modelBuilder.Entity<HyperliquidLiveScoreSnapshotEntity>(entity =>
+        {
+            entity.HasIndex(e => new { e.TraderAddress, e.ScoredAt });
+            entity.HasIndex(e => e.LiveScore);
+            entity.HasIndex(e => e.ScoredAt);
         });
     }
 }

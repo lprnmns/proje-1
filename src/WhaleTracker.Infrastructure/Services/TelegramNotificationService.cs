@@ -8,6 +8,7 @@ namespace WhaleTracker.Infrastructure.Services;
 
 public class TelegramNotificationService : INotificationService
 {
+    private static DateTime _mutedUntilUtc = DateTime.MinValue;
     private readonly HttpClient _httpClient;
     private readonly ILogger<TelegramNotificationService> _logger;
     private readonly TelegramSettings _settings;
@@ -26,7 +27,8 @@ public class TelegramNotificationService : INotificationService
     {
         if (!_settings.Enabled ||
             string.IsNullOrWhiteSpace(_settings.BotToken) ||
-            string.IsNullOrWhiteSpace(_settings.ChatId))
+            string.IsNullOrWhiteSpace(_settings.ChatId) ||
+            DateTime.UtcNow < _mutedUntilUtc)
         {
             return;
         }
@@ -48,6 +50,11 @@ public class TelegramNotificationService : INotificationService
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (body.Contains("chat not found", StringComparison.OrdinalIgnoreCase))
+                {
+                    _mutedUntilUtc = DateTime.UtcNow.AddMinutes(5);
+                }
+
                 _logger.LogWarning("Telegram notification failed: {Status} {Body}", response.StatusCode, body);
             }
         }

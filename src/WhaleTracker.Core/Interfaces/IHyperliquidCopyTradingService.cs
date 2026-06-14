@@ -6,6 +6,9 @@ public interface IHyperliquidCopyTradingService
 {
     Task<HyperliquidCopySnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default);
 
+    Task<HyperliquidLiveLeaderboardResponse> GetLiveLeaderboardAsync(
+        CancellationToken cancellationToken = default);
+
     Task<HyperliquidCopyEnableResponse> EnableAsync(
         HyperliquidCopyEnableRequest request,
         CancellationToken cancellationToken = default);

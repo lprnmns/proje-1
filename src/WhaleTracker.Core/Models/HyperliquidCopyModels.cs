@@ -83,6 +83,90 @@ public class HyperliquidCopySnapshot
         Array.Empty<HyperliquidCopyEventView>();
 }
 
+public class HyperliquidLiveLeaderboardResponse
+{
+    public DateTime CheckedAt { get; set; } = DateTime.UtcNow;
+    public IReadOnlyList<HyperliquidLiveTraderScoreView> Traders { get; set; } =
+        Array.Empty<HyperliquidLiveTraderScoreView>();
+    public IReadOnlyList<HyperliquidLivePositionView> ActivePositions { get; set; } =
+        Array.Empty<HyperliquidLivePositionView>();
+    public IReadOnlyList<HyperliquidLivePositionView> ClosedPositions { get; set; } =
+        Array.Empty<HyperliquidLivePositionView>();
+    public IReadOnlyList<HyperliquidLiveFillView> RecentFills { get; set; } =
+        Array.Empty<HyperliquidLiveFillView>();
+}
+
+public class HyperliquidLiveTraderScoreView
+{
+    public string TraderAddress { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public bool IsEnabled { get; set; }
+    public bool ExecuteOrders { get; set; }
+    public decimal LiveScore { get; set; }
+    public decimal Confidence { get; set; }
+    public decimal RealizedPnlUsd { get; set; }
+    public decimal UnrealizedPnlUsd { get; set; }
+    public decimal NetPnlUsd { get; set; }
+    public decimal PnlPctAccount { get; set; }
+    public int ClosedPositions { get; set; }
+    public int ActivePositions { get; set; }
+    public int Wins { get; set; }
+    public int Losses { get; set; }
+    public decimal WinRate { get; set; }
+    public int OkxCopyablePositions { get; set; }
+    public int CopiedPositions { get; set; }
+    public int SkippedPositions { get; set; }
+    public decimal AvgHoldSeconds { get; set; }
+    public decimal BestTradeUsd { get; set; }
+    public decimal WorstTradeUsd { get; set; }
+    public DateTime ScoredAt { get; set; }
+}
+
+public class HyperliquidLivePositionView
+{
+    public long Id { get; set; }
+    public string TraderAddress { get; set; } = string.Empty;
+    public string Coin { get; set; } = string.Empty;
+    public string OkxSymbol { get; set; } = string.Empty;
+    public string Side { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public DateTime OpenedAt { get; set; }
+    public DateTime LastSeenAt { get; set; }
+    public DateTime? ClosedAt { get; set; }
+    public decimal EntryPrice { get; set; }
+    public decimal ExitPrice { get; set; }
+    public decimal CurrentSize { get; set; }
+    public decimal MaxSize { get; set; }
+    public decimal CurrentNotionalUsd { get; set; }
+    public decimal MaxNotionalUsd { get; set; }
+    public decimal PositionPctOfAccount { get; set; }
+    public decimal UnrealizedPnlUsd { get; set; }
+    public decimal RealizedPnlUsd { get; set; }
+    public decimal FeeUsd { get; set; }
+    public decimal NetPnlUsd { get; set; }
+    public bool OpenedFromTracking { get; set; }
+    public bool IsOkxTradable { get; set; }
+    public string CopyStatus { get; set; } = string.Empty;
+    public string SkipReason { get; set; } = string.Empty;
+    public decimal DurationSeconds { get; set; }
+    public decimal PnlPctAccount { get; set; }
+    public decimal PnlPctNotional { get; set; }
+}
+
+public class HyperliquidLiveFillView
+{
+    public string TraderAddress { get; set; } = string.Empty;
+    public string Coin { get; set; } = string.Empty;
+    public string OkxSymbol { get; set; } = string.Empty;
+    public string Direction { get; set; } = string.Empty;
+    public string Side { get; set; } = string.Empty;
+    public decimal Price { get; set; }
+    public decimal Size { get; set; }
+    public decimal ClosedPnlUsd { get; set; }
+    public decimal FeeUsd { get; set; }
+    public DateTime ExchangeTime { get; set; }
+}
+
 public class HyperliquidCopyEnableResponse
 {
     public bool Success { get; set; }
