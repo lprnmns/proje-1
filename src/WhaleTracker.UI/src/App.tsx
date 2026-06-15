@@ -1000,7 +1000,26 @@ function HyperConsensusPage({ path }: { path: string }) {
   }, [loadWalletPositions])
   const score = (coin: string) => data?.coins.find(x => x.coin === coin)?.directionScore
   const selected = data?.coins.find(x => x.coin === selectedCoin)
-  const biasPercent = selected ? Math.max(0, Math.min(100, 50 + selected.directionScore / 2)) : 50
+  const marketConsensus = useMemo(() => {
+    const coins = data?.coins || []
+    const active = coins.filter(row => Math.abs(Number(row.directionScore || 0)) >= 15)
+    const source = active.length > 0 ? active : coins
+    const longPower = source.reduce((sum, row) => sum + Math.max(0, Number(row.directionScore || 0)) * Math.max(1, Number(row.contributorCount || 0)), 0)
+    const shortPower = source.reduce((sum, row) => sum + Math.abs(Math.min(0, Number(row.directionScore || 0))) * Math.max(1, Number(row.contributorCount || 0)), 0)
+    const totalPower = longPower + shortPower
+    const netScore = totalPower > 0 ? (longPower - shortPower) / totalPower * 100 : 0
+    return {
+      activeCoinCount: active.length,
+      coinCount: coins.length,
+      longPower,
+      shortPower,
+      totalPower,
+      netScore,
+      bullishPercent: Math.max(0, Math.min(100, 50 + netScore / 2)),
+      regime: netScore > 15 ? 'Bullish' : netScore < -15 ? 'Bearish' : 'Neutral'
+    }
+  }, [data])
+  const biasPercent = marketConsensus.bullishPercent
   const coinRows = useMemo(() => [...(data?.coins || [])]
     .sort((a, b) =>
       b.contributorCount - a.contributorCount ||
@@ -1026,8 +1045,8 @@ function HyperConsensusPage({ path }: { path: string }) {
       ]} />
       <section className="hyper-panel consensus-meter-panel">
         <div className="hyper-panel-head">
-          <strong>{selectedCoin} bullishness</strong>
-          <span>{selected ? `${biasPercent.toFixed(1)}% bullish / ${selected.targetSide} score ${selected.directionScore.toFixed(2)} / quality ${selected.qualityScore.toFixed(2)} / conflict ${(selected.conflictRatio * 100).toFixed(0)}% / contributors ${selected.contributorCount}` : '—'}</span>
+          <strong>Market consensus bullishness</strong>
+          <span>{data ? `${biasPercent.toFixed(1)}% bullish / ${marketConsensus.regime} score ${marketConsensus.netScore.toFixed(2)} / long ${marketConsensus.longPower.toFixed(0)} / short ${marketConsensus.shortPower.toFixed(0)} / active ${marketConsensus.activeCoinCount}/${marketConsensus.coinCount} coins` : '—'}</span>
         </div>
         <div className="consensus-meter">
           <span>Bearish</span>
@@ -1036,6 +1055,9 @@ function HyperConsensusPage({ path }: { path: string }) {
             <div className="consensus-marker" style={{ left: `${biasPercent}%` }} />
           </div>
           <span>Bullish</span>
+        </div>
+        <div className="market-selected-note">
+          Selected coin detail: {selected ? `${selectedCoin} ${selected.targetSide} score ${selected.directionScore.toFixed(2)} / quality ${selected.qualityScore.toFixed(2)} / conflict ${(selected.conflictRatio * 100).toFixed(0)}% / contributors ${selected.contributorCount}` : '—'}
         </div>
       </section>
       <section className="hyper-dashboard-grid">
