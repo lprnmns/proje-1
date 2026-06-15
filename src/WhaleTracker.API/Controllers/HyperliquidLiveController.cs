@@ -21,15 +21,18 @@ public sealed class HyperliquidLiveController : ControllerBase
 
     private readonly WhaleTrackerDbContext _db;
     private readonly IHyperliquidConsensusService _consensusService;
+    private readonly IHyperliquidConsensusExecutionService _executionService;
     private readonly IOkxService _okxService;
 
     public HyperliquidLiveController(
         WhaleTrackerDbContext db,
         IHyperliquidConsensusService consensusService,
+        IHyperliquidConsensusExecutionService executionService,
         IOkxService okxService)
     {
         _db = db;
         _consensusService = consensusService;
+        _executionService = executionService;
         _okxService = okxService;
     }
 
@@ -50,6 +53,9 @@ public sealed class HyperliquidLiveController : ControllerBase
             .Where(x => x.Status == "CLOSED")
             .ToListAsync(cancellationToken);
         var okx = await SafeOkxAccount(cancellationToken);
+        var plan = await _executionService.BuildPlanAsync(cancellationToken);
+        var consensusMode = plan.Config.WorkerEnabled ? "Consensus Enabled" : "Shadow Only";
+        var perTraderMode = enabled.Any(x => x.ExecuteOrders) ? "Per-Trader Enabled" : consensusMode;
 
         return Ok(new
         {
@@ -64,8 +70,10 @@ public sealed class HyperliquidLiveController : ControllerBase
             executableVirtualPnlUsd = (decimal?)null,
             realOkxPnlUsd = (decimal?)null,
             currentOkxEquity = okx?.TotalUsd,
-            realExecutionMode = enabled.Any(x => x.ExecuteOrders) ? "Enabled" : "Shadow Only",
+            realExecutionMode = perTraderMode,
             realExecutionTraders = enabled.Count(x => x.ExecuteOrders),
+            consensusExecutionEnabled = plan.Config.WorkerEnabled,
+            consensusExecutionConfig = plan.Config,
             trackingStartedAt = enabled.Select(x => (DateTime?)x.CreatedAt).OrderBy(x => x).FirstOrDefault(),
             latestScoreAt = latestScores.Select(x => (DateTime?)x.ScoredAt).OrderByDescending(x => x).FirstOrDefault(),
             checkedAt = DateTime.UtcNow
@@ -411,11 +419,11 @@ public sealed class HyperliquidLiveController : ControllerBase
             .ToListAsync(cancellationToken);
         var consensus = await _consensusService.GetSnapshotAsync(cancellationToken);
         var okxPositions = okx?.ActivePositions ?? new List<Core.Models.Position>();
-        var plan = BuildShadowExecutionPlan(consensus.Coins, okxPositions, okx?.TotalUsd ?? 100m);
+        var plan = await _executionService.BuildPlanAsync(cancellationToken);
         return Ok(new
         {
             okxEquity = okx?.TotalUsd,
-            realExecutionMode = traders.Any(x => x.ExecuteOrders) ? "Enabled" : "Shadow Only",
+            realExecutionMode = plan.Config.WorkerEnabled ? "Consensus Enabled" : traders.Any(x => x.ExecuteOrders) ? "Per-Trader Enabled" : "Shadow Only",
             realExecutionTraders = traders.Count(x => x.ExecuteOrders),
             openOkxPositions = okxPositions,
             shadowExecutionPlan = plan,
@@ -436,55 +444,13 @@ public sealed class HyperliquidLiveController : ControllerBase
     [HttpGet("execution/plan")]
     public async Task<IActionResult> ExecutionPlan(CancellationToken cancellationToken)
     {
-        var okx = await SafeOkxAccount(cancellationToken);
-        var consensus = await _consensusService.GetSnapshotAsync(cancellationToken);
-        return Ok(BuildShadowExecutionPlan(
-            consensus.Coins,
-            okx?.ActivePositions ?? new List<Core.Models.Position>(),
-            okx?.TotalUsd ?? 100m));
+        return Ok(await _executionService.BuildPlanAsync(cancellationToken));
     }
 
     [HttpPost("execution/apply-plan")]
     public async Task<IActionResult> ApplyExecutionPlan(CancellationToken cancellationToken)
     {
-        await _db.HyperliquidCopyTraders.ExecuteUpdateAsync(
-            setters => setters.SetProperty(x => x.ExecuteOrders, false).SetProperty(x => x.UpdatedAt, DateTime.UtcNow),
-            cancellationToken);
-
-        var okx = await SafeOkxAccount(cancellationToken);
-        var consensus = await _consensusService.GetSnapshotAsync(cancellationToken);
-        var plan = BuildShadowExecutionPlan(
-            consensus.Coins,
-            okx?.ActivePositions ?? new List<Core.Models.Position>(),
-            okx?.TotalUsd ?? 100m);
-
-        var results = new List<object>();
-        foreach (var row in plan.Rows.Where(x => x.Action is not ("SKIP" or "HOLD")))
-        {
-            var before = await _okxService.GetAllPositionsAsync();
-            var rowResults = await ApplyPlanRow(row, before, cancellationToken);
-            results.Add(new
-            {
-                row.Coin,
-                row.Action,
-                row.TargetSide,
-                row.TargetMarginUsd,
-                row.SignedTargetNotionalUsd,
-                results = rowResults
-            });
-        }
-
-        var after = await _okxService.GetAllPositionsAsync();
-        return Ok(new
-        {
-            success = results.SelectMany(x => ((IEnumerable<object>)x.GetType().GetProperty("results")!.GetValue(x)!)).All(ResultSuccess),
-            mode = "Consensus real apply",
-            warning = "Legacy per-trader Hyperliquid ExecuteOrders flags were forced off before applying this consensus plan.",
-            plan.Config,
-            plan.Summary,
-            results,
-            openOkxPositions = after
-        });
+        return Ok(await _executionService.ApplyPlanAsync(cancellationToken));
     }
 
     [HttpGet("execution/orders")]

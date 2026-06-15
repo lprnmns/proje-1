@@ -17,6 +17,7 @@ public class AppSettings
     public AuthSettings Auth { get; set; } = new();
     public DatabaseSettings Database { get; set; } = new();
     public TelegramSettings Telegram { get; set; } = new();
+    public HyperliquidConsensusExecutionSettings HyperliquidConsensusExecution { get; set; } = new();
 }
 
 public class ZerionSettings
@@ -177,4 +178,19 @@ public class TelegramSettings
     public string BotToken { get; set; } = string.Empty;
     public string ChatId { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
+}
+
+public class HyperliquidConsensusExecutionSettings
+{
+    public bool Enabled { get; set; } = false;
+    public int TickSeconds { get; set; } = 5;
+    public decimal Threshold { get; set; } = 15m;
+    public decimal Multiplier { get; set; } = 1.0m;
+    public decimal MinOrderNotionalUsd { get; set; } = 6.85m;
+    public decimal MinRebalanceNotionalUsd { get; set; } = 8m;
+    public decimal Leverage { get; set; } = 2m;
+    public string MarginMode { get; set; } = "isolated";
+    public decimal MaxCoinMarginPct { get; set; } = 0.15m;
+    public decimal MaxTotalMarginPct { get; set; } = 0.35m;
+    public string CoinWeightMode { get; set; } = "major_boost";
 }

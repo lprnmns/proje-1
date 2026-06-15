@@ -47,6 +47,7 @@ builder.Services.AddHttpClient<ITraderPerformanceService, ZerionTraderPerformanc
 builder.Services.AddHttpClient<ITraderDiscoveryService, DuneTraderDiscoveryService>();
 builder.Services.AddHttpClient<IHyperliquidCopyTradingService, HyperliquidCopyTradingService>();
 builder.Services.AddScoped<IHyperliquidConsensusService, HyperliquidConsensusService>();
+builder.Services.AddScoped<IHyperliquidConsensusExecutionService, HyperliquidConsensusExecutionService>();
 
 // ================================================================
 // SERVİSLER
@@ -63,6 +64,7 @@ builder.Services.AddHostedService<TraderDiscoveryWorker>();
 builder.Services.AddHostedService<TraderPerformanceWorker>();
 builder.Services.AddHostedService<HyperliquidCopyWorker>();
 builder.Services.AddHostedService<HyperliquidConsensusWorker>();
+builder.Services.AddHostedService<HyperliquidConsensusExecutionWorker>();
 builder.Services.AddHostedService<TelegramCommandWorker>();
 
 // ================================================================

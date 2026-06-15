@@ -1159,11 +1159,13 @@ function HyperExecutionPage({ path }: { path: string }) {
     <HyperShell current={path} title="OKX Execution & Ledger" subtitle="Real execution, shadow-only state, target exposure and audit rows.">
       <HyperMetricCards cards={[
         { label: 'Current OKX equity', value: dash(summary?.okxEquity, formatUsd), tone: 'info' },
-        { label: 'Real execution mode', value: summary?.realExecutionMode ?? '—', tone: summary?.realExecutionMode === 'Enabled' ? 'warn' : 'muted' },
+        { label: 'Real execution mode', value: summary?.realExecutionMode ?? '—', tone: summary?.realExecutionMode?.includes('Enabled') ? 'warn' : 'muted' },
         { label: 'Real execution traders', value: summary?.realExecutionTraders ?? '—' },
+        { label: 'Consensus worker', value: plan?.config?.workerEnabled ? 'Enabled' : 'Disabled', tone: plan?.config?.workerEnabled ? 'warn' : 'muted' },
         { label: 'Open OKX positions', value: positions.length },
         { label: 'Shadow threshold', value: dash(plan?.config?.threshold) },
         { label: 'Multiplier', value: dash(plan?.config?.multiplier) },
+        { label: 'Coin weight mode', value: plan?.config?.coinWeightMode ?? '—', tone: 'info' },
         { label: 'Leverage / mode', value: plan?.config ? `${plan.config.leverage}x ${plan.config.marginMode}` : '—' },
         { label: 'Min order', value: dash(plan?.config?.minOrderNotionalUsd, formatUsd) },
         { label: 'Min rebalance', value: dash(plan?.config?.minRebalanceNotionalUsd, formatUsd) },
@@ -1174,17 +1176,19 @@ function HyperExecutionPage({ path }: { path: string }) {
       <section className="hyper-danger-row">
         <button onClick={() => confirmAction('Disable real execution for every trader?', '/api/hyperliquid/execution/disable-real')}>Disable real execution</button>
         <button onClick={() => confirmAction('Switch all traders to shadow-only mode?', '/api/hyperliquid/execution/enable-shadow-only')}>Enable shadow-only</button>
+        <button onClick={() => confirmAction('Apply the current consensus plan to live OKX once? This can open, increase, reduce, or close live isolated perp positions.', '/api/hyperliquid/execution/apply-plan')}>Apply current plan once</button>
         <button onClick={() => confirmAction('Pause all is not yet wired separately. Disable real execution instead?', '/api/hyperliquid/execution/disable-real')}>Pause all</button>
       </section>
       <section className="hyper-panel">
         <div className="hyper-panel-head">
           <strong>Shadow OKX target positions</strong>
-          <span>Real orders disabled. Formula: abs(score) at or above {dash(plan?.config?.threshold)} creates a target; target notional = score * {dash(plan?.config?.multiplier)}.</span>
+          <span>Worker {plan?.config?.workerEnabled ? 'enabled' : 'disabled'}. Formula: abs(score) at/above {dash(plan?.config?.threshold)} creates a target; target notional = score * {dash(plan?.config?.multiplier)} * coin weight, then total cap scaling.</span>
         </div>
         <HyperTable
           columns={[
             { key: 'coin', label: 'Coin' },
             { key: 'directionScore', label: 'Score', numeric: true, render: r => dash(r.directionScore) },
+            { key: 'coinWeight', label: 'Coin Weight', numeric: true, render: r => dash(r.coinWeight, v => `${v.toFixed(2)}x`) },
             { key: 'qualityScore', label: 'Quality', numeric: true, render: r => dash(r.qualityScore) },
             { key: 'conflictRatio', label: 'Conflict', numeric: true, render: r => dash(r.conflictRatio, v => `${(v * 100).toFixed(0)}%`) },
             { key: 'participation', label: 'Participation', numeric: true, render: r => dash(r.participation, v => `${(v * 100).toFixed(1)}%`) },
