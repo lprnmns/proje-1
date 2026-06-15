@@ -85,12 +85,21 @@ public sealed class HyperliquidConsensusService : IHyperliquidConsensusService
             .AsNoTracking()
             .Where(x => x.WindowDays == WindowDays)
             .ToListAsync(cancellationToken);
+        var sideProfiles = await _db.TraderCoinSideProfiles
+            .AsNoTracking()
+            .Where(x => x.WindowDays == WindowDays)
+            .ToListAsync(cancellationToken);
         var generalProfiles = profiles
             .Where(x => x.Coin == GeneralCoin)
             .ToDictionary(x => x.TraderAddress, StringComparer.OrdinalIgnoreCase);
         var coinProfiles = profiles
             .Where(x => x.Coin != GeneralCoin)
             .ToDictionary(x => (x.TraderAddress.ToLowerInvariant(), x.Coin.ToUpperInvariant()));
+        var coinSideProfiles = sideProfiles
+            .ToDictionary(x => (
+                x.TraderAddress.ToLowerInvariant(),
+                x.Coin.ToUpperInvariant(),
+                x.Side.ToUpperInvariant()));
 
         var trackedAddresses = generalProfiles.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var livePositions = await _db.HyperliquidLivePositions
@@ -119,6 +128,10 @@ public sealed class HyperliquidConsensusService : IHyperliquidConsensusService
 
             var coin = NormalizeCoin(position.OkxSymbol, position.Coin);
             coinProfiles.TryGetValue((position.TraderAddress.ToLowerInvariant(), coin), out var coinProfile);
+            coinSideProfiles.TryGetValue((
+                position.TraderAddress.ToLowerInvariant(),
+                coin,
+                position.Side.ToUpperInvariant()), out var sideProfile);
 
             var accountValue = position.LatestSourceAccountValueUsd > 0
                 ? position.LatestSourceAccountValueUsd
@@ -129,12 +142,15 @@ public sealed class HyperliquidConsensusService : IHyperliquidConsensusService
             }
 
             var allocPct = position.CurrentNotionalUsd / accountValue * 100m;
-            var normalizedExposure = Clamp(allocPct / SaturationPct(coin), 0m, 1m);
-            var allocationConviction = AllocationConviction(allocPct, coinProfile);
-            var coinSkill = coinProfile?.CoinSkillScore ?? Clamp(general.CoinSkillScore * 0.55m, 0.05m, 0.35m);
-            var sampleConfidence = coinProfile?.SampleConfidence ?? 0.2m;
+            var normalizedExposure = NormalizedExposure(allocPct, sideProfile, coinProfile, coin);
+            var allocationConviction = AllocationConviction(allocPct, sideProfile, coinProfile);
+            var coinSkill = sideProfile?.CoinSideSkillScore ??
+                coinProfile?.CoinSkillScore ??
+                Clamp(general.CoinSkillScore * 0.55m, 0.05m, 0.35m);
+            var sampleConfidence = sideProfile?.SampleConfidence ?? coinProfile?.SampleConfidence ?? 0.2m;
             var freshness = FreshnessScore(position.LastSeenAt, now);
             var riskAdjustment = RiskAdjustment(activeByTrader.GetValueOrDefault(position.TraderAddress), accountValue);
+            var baselinePenalty = position.OpenedFromTracking ? 1m : 0.65m;
             var direction = position.Side.Equals("LONG", StringComparison.OrdinalIgnoreCase) ? 1m : -1m;
             var weightedSignal = direction *
                 normalizedExposure *
@@ -143,7 +159,8 @@ public sealed class HyperliquidConsensusService : IHyperliquidConsensusService
                 sampleConfidence *
                 allocationConviction *
                 freshness *
-                riskAdjustment;
+                riskAdjustment *
+                baselinePenalty;
 
             exposures.Add(new TraderCoinCurrentExposureEntity
             {
@@ -361,8 +378,12 @@ public sealed class HyperliquidConsensusService : IHyperliquidConsensusService
         await _db.TraderCoinProfiles
             .Where(x => addresses.Contains(x.TraderAddress) && x.WindowDays == WindowDays)
             .ExecuteDeleteAsync(cancellationToken);
+        await _db.TraderCoinSideProfiles
+            .Where(x => addresses.Contains(x.TraderAddress) && x.WindowDays == WindowDays)
+            .ExecuteDeleteAsync(cancellationToken);
 
         var rows = new List<TraderCoinProfileEntity>();
+        var sideRows = new List<TraderCoinSideProfileEntity>();
         foreach (var row in watchlist)
         {
             var address = NormalizeAddress(row.GetValueOrDefault("address") ?? string.Empty);
@@ -386,11 +407,25 @@ public sealed class HyperliquidConsensusService : IHyperliquidConsensusService
                     rows.Add(profile);
                 }
             }
+
+            foreach (var sideGroup in closedRows
+                .Where(x => IsSide(x.GetValueOrDefault("side") ?? string.Empty))
+                .GroupBy(x => (
+                    Coin: (x.GetValueOrDefault("coin") ?? string.Empty).ToUpperInvariant(),
+                    Side: (x.GetValueOrDefault("side") ?? string.Empty).ToUpperInvariant())))
+            {
+                var profile = CoinSideProfile(address, sideGroup.Key.Coin, sideGroup.Key.Side, sideGroup.ToList(), row);
+                if (profile.ClosedPositions > 0)
+                {
+                    sideRows.Add(profile);
+                }
+            }
         }
 
         await _db.TraderCoinProfiles.AddRangeAsync(rows, cancellationToken);
+        await _db.TraderCoinSideProfiles.AddRangeAsync(sideRows, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
-        return rows.Count;
+        return rows.Count + sideRows.Count;
     }
 
     private static TraderCoinProfileEntity GeneralProfile(string address, Dictionary<string, string> row)
@@ -494,6 +529,74 @@ public sealed class HyperliquidConsensusService : IHyperliquidConsensusService
         };
     }
 
+    private static TraderCoinSideProfileEntity CoinSideProfile(
+        string address,
+        string coin,
+        string side,
+        List<Dictionary<string, string>> rows,
+        Dictionary<string, string> generalRow)
+    {
+        var pnls = rows.Select(x => DecimalValue(x, "net_pnl_usd")).ToList();
+        var notionals = rows.Select(x => DecimalValue(x, "entry_notional_usd")).Where(x => x > 0).ToList();
+        var allocs = rows.Select(x => DecimalValue(x, "max_fill_balance_pct")).Where(x => x >= 0).ToList();
+        var holds = rows.Select(x => DecimalValue(x, "holding_hours") * 3600m).Where(x => x >= 0).ToList();
+        var grossProfit = pnls.Where(x => x > 0).Sum();
+        var grossLoss = pnls.Where(x => x < 0).Sum();
+        var netPnl = pnls.Sum();
+        var closed = rows.Count;
+        var wins = pnls.Count(x => x > 0);
+        var losses = pnls.Count(x => x < 0);
+        var profitFactor = grossLoss == 0 ? (grossProfit > 0 ? 999m : 0m) : grossProfit / Math.Abs(grossLoss);
+        var oneTrade = grossProfit <= 0 ? 1m : Clamp(pnls.Where(x => x > 0).DefaultIfEmpty(0).Max() / grossProfit, 0m, 1m);
+        var accountValue = Math.Max(DecimalValue(generalRow, "account_value_usd"), 30_000m);
+        var pnlScore = Clamp((netPnl / accountValue + 0.10m) / 0.25m, 0m, 1m);
+        var sampleScore = Clamp(closed / 8m, 0m, 1m);
+        var winRate = closed == 0 ? 0 : wins / (decimal)closed * 100m;
+        var winrateQuality = Clamp(winRate / 100m, 0m, 1m) * sampleScore;
+        var pfScore = Clamp((Math.Min(profitFactor, 10m) - 1m) / 4m, 0m, 1m);
+        var consistency = 1m - oneTrade;
+        var rawSkill = 0.32m * pnlScore +
+            0.22m * winrateQuality +
+            0.18m * sampleScore +
+            0.18m * pfScore +
+            0.10m * consistency;
+
+        return new TraderCoinSideProfileEntity
+        {
+            TraderAddress = address,
+            Coin = coin,
+            Side = side,
+            WindowDays = WindowDays,
+            ComputedAt = DateTime.UtcNow,
+            ClosedPositions = closed,
+            WinningPositions = wins,
+            LosingPositions = losses,
+            WinRate = winRate,
+            NetPnlUsd = netPnl,
+            GrossProfitUsd = grossProfit,
+            GrossLossUsd = grossLoss,
+            ProfitFactor = profitFactor,
+            TotalEntryNotionalUsd = notionals.Sum(),
+            AvgEntryNotionalUsd = Average(notionals),
+            MedianEntryNotionalUsd = Percentile(notionals, 0.50m),
+            AvgAllocPct = Average(allocs),
+            MedianAllocPct = Percentile(allocs, 0.50m),
+            P75AllocPct = Percentile(allocs, 0.75m),
+            P90AllocPct = Percentile(allocs, 0.90m),
+            MaxAllocPct = allocs.DefaultIfEmpty(0).Max(),
+            AvgHoldSeconds = Average(holds),
+            MedianHoldSeconds = Percentile(holds, 0.50m),
+            BestTradePnlUsd = pnls.DefaultIfEmpty(0).Max(),
+            WorstTradePnlUsd = pnls.DefaultIfEmpty(0).Min(),
+            OneTradePnlConcentration = oneTrade,
+            CoinSideSkillScore = Clamp(rawSkill, 0m, 1m),
+            SampleConfidence = Clamp(sampleScore * 0.75m + Clamp(DecimalValue(generalRow, "confidence_score") / 100m, 0m, 1m) * 0.25m, 0m, 1m),
+            HistoricalQualityScore = DecimalValue(generalRow, "historical_quality_score"),
+            HistoricalConfidenceScore = DecimalValue(generalRow, "confidence_score"),
+            ApproximationQuality = "closed_positions_coin_side_alloc_profile"
+        };
+    }
+
     private static bool IsOkxTradableRow(Dictionary<string, string> row)
     {
         var okx = row.GetValueOrDefault("okx_tradable") ?? string.Empty;
@@ -503,6 +606,10 @@ public sealed class HyperliquidConsensusService : IHyperliquidConsensusService
             copyable.Equals("yes", StringComparison.OrdinalIgnoreCase) ||
             copyable.Equals("true", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool IsSide(string value) =>
+        value.Equals("LONG", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("SHORT", StringComparison.OrdinalIgnoreCase);
 
     private static decimal AllocationConviction(decimal currentAllocPct, TraderCoinProfileEntity? profile)
     {
@@ -527,6 +634,66 @@ public sealed class HyperliquidConsensusService : IHyperliquidConsensusService
         }
 
         return 0.5m;
+    }
+
+    private static decimal AllocationConviction(
+        decimal currentAllocPct,
+        TraderCoinSideProfileEntity? sideProfile,
+        TraderCoinProfileEntity? coinProfile)
+    {
+        if (sideProfile == null || sideProfile.P90AllocPct <= 0)
+        {
+            return AllocationConviction(currentAllocPct, coinProfile);
+        }
+
+        var median = Math.Max(sideProfile.MedianAllocPct, sideProfile.AvgAllocPct);
+        if (sideProfile.P90AllocPct > 0 && currentAllocPct > sideProfile.P90AllocPct * 2m)
+        {
+            return 0.8m;
+        }
+
+        if (currentAllocPct >= sideProfile.P90AllocPct)
+        {
+            return 1m;
+        }
+
+        if (currentAllocPct >= sideProfile.P75AllocPct)
+        {
+            return 0.85m;
+        }
+
+        if (median > 0 && currentAllocPct >= median)
+        {
+            return 0.7m;
+        }
+
+        if (median > 0 && currentAllocPct >= median * 0.5m)
+        {
+            return 0.45m;
+        }
+
+        return 0.2m;
+    }
+
+    private static decimal NormalizedExposure(
+        decimal currentAllocPct,
+        TraderCoinSideProfileEntity? sideProfile,
+        TraderCoinProfileEntity? coinProfile,
+        string coin)
+    {
+        if (sideProfile is { P90AllocPct: > 0 })
+        {
+            var saturation = Math.Max(sideProfile.P90AllocPct, sideProfile.MedianAllocPct * 2m);
+            return Clamp(currentAllocPct / Math.Max(saturation, 1m), 0m, 1m);
+        }
+
+        if (coinProfile is { P90AllocPct: > 0 })
+        {
+            var saturation = Math.Max(coinProfile.P90AllocPct, coinProfile.MedianAllocPct * 2m);
+            return Clamp(currentAllocPct / Math.Max(saturation, 1m), 0m, 1m);
+        }
+
+        return Clamp(currentAllocPct / SaturationPct(coin), 0m, 1m);
     }
 
     private static decimal FreshnessScore(DateTime lastSeenAt, DateTime now)

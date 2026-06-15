@@ -153,6 +153,97 @@
   font-size: 16px;
 }
 
+.hyper-panel-head span {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.consensus-meter-panel {
+  padding-bottom: 18px;
+}
+
+.consensus-meter {
+  display: grid;
+  grid-template-columns: 80px minmax(280px, 1fr) 80px;
+  gap: 12px;
+  align-items: center;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.consensus-meter > span:last-child {
+  text-align: right;
+}
+
+.consensus-track {
+  position: relative;
+  height: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.92), rgba(250, 204, 21, 0.82), rgba(45, 212, 191, 0.92));
+  overflow: visible;
+}
+
+.consensus-zero {
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  width: 1px;
+  height: 22px;
+  background: rgba(226, 232, 240, 0.72);
+}
+
+.consensus-marker {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #e2e8f0;
+  border-radius: 999px;
+  background: #020617;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 18px rgba(125, 211, 252, 0.65);
+}
+
+.hyper-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(620px, 1.08fr) minmax(520px, 0.92fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.hyper-dashboard-grid .hyper-panel {
+  margin: 0;
+}
+
+.consensus-ratio-cell {
+  display: grid;
+  grid-template-columns: minmax(86px, 1fr) 52px;
+  gap: 8px;
+  align-items: center;
+  min-width: 150px;
+}
+
+.mini-consensus-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+  overflow: hidden;
+}
+
+.mini-consensus-track span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f87171, #facc15, #2dd4bf);
+}
+
+.consensus-ratio-cell strong {
+  color: #dbeafe;
+  font-size: 12px;
+  text-align: right;
+}
+
 .hyper-toolbar {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) 180px 180px 110px;
@@ -1241,6 +1332,10 @@ button:hover {
 }
 
 @media (max-width: 1120px) {
+  .hyper-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
   .mission-shell {
     grid-template-columns: 1fr;
     overflow: auto;
@@ -1263,6 +1358,10 @@ button:hover {
 }
 
 @media (max-width: 760px) {
+  .consensus-meter {
+    grid-template-columns: 58px minmax(160px, 1fr) 58px;
+  }
+
   .topbar {
     align-items: flex-start;
     height: 140px;

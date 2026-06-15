@@ -197,6 +197,14 @@ type TraderCoinExposureView = {
   riskAdjustment: number
   weightedSignal: number
   isBaseline: boolean
+  historicalMedianAllocPct?: number
+  historicalP75AllocPct?: number
+  historicalP90AllocPct?: number
+  currentVsMedian?: number
+  currentVsP90?: number
+  coinSideSkillScore?: number
+  sideSampleConfidence?: number
+  sideClosedPositions?: number
 }
 
 type HyperliquidConsensusSnapshot = {
@@ -911,6 +919,7 @@ function AllocationTable({ rows }: { rows: any[] }) {
     <HyperTable
       columns={[
         { key: 'coin', label: 'Coin' },
+        { key: 'side', label: 'Side' },
         { key: 'minAllocPct', label: 'Min', numeric: true, render: r => dash(r.minAllocPct, v => `${v.toFixed(2)}%`) },
         { key: 'p25AllocPct', label: 'P25', numeric: true, render: r => dash(r.p25AllocPct, v => `${v.toFixed(2)}%`) },
         { key: 'medianAllocPct', label: 'Median', numeric: true, render: r => dash(r.medianAllocPct, v => `${v.toFixed(2)}%`) },
@@ -922,86 +931,185 @@ function AllocationTable({ rows }: { rows: any[] }) {
         { key: 'currentVsMedian', label: 'Current / Median', numeric: true, render: r => dash(r.currentVsMedian, v => `${v.toFixed(2)}x`) },
         { key: 'currentVsP90', label: 'Current / P90', numeric: true, render: r => dash(r.currentVsP90, v => `${v.toFixed(2)}x`) },
         { key: 'allocationConviction', label: 'Conviction', numeric: true, render: r => dash(r.allocationConviction) },
+        { key: 'coinSideSkillScore', label: 'Side Skill', numeric: true, render: r => dash(r.coinSideSkillScore) },
+        { key: 'sampleConfidence', label: 'Sample Conf', numeric: true, render: r => dash(r.sampleConfidence) },
       ]}
       rows={rows}
-      getKey={(row) => row.coin}
+      getKey={(row) => `${row.coin}-${row.side}`}
     />
   )
 }
 
 function HyperConsensusPage({ path }: { path: string }) {
   const [data, setData] = useState<HyperliquidConsensusSnapshot | null>(null)
+  const [summary, setSummary] = useState<HyperSummary | null>(null)
   const [selectedCoin, setSelectedCoin] = useState('BTC')
   const [contributors, setContributors] = useState<any[]>([])
+  const [selectedTrader, setSelectedTrader] = useState<string>('')
+  const [walletPositions, setWalletPositions] = useState<any[]>([])
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const load = useCallback(() => {
-    fetchJson<HyperliquidConsensusSnapshot>('/api/hyperliquid/consensus').then((snapshot) => {
+    Promise.all([
+      fetchJson<HyperSummary>('/api/hyperliquid/live/summary'),
+      fetchJson<HyperliquidConsensusSnapshot>('/api/hyperliquid/consensus'),
+    ]).then(([nextSummary, snapshot]) => {
+      setSummary(nextSummary)
       setData(snapshot)
-      if (!snapshot.coins.some(x => x.coin === selectedCoin) && snapshot.coins[0]) setSelectedCoin(snapshot.coins[0].coin)
-    }).catch(() => setData(null))
+      setLastRefresh(new Date())
+      if (!snapshot.coins.some(x => x.coin === selectedCoin) && snapshot.coins[0]) {
+        const sorted = [...snapshot.coins].sort((a, b) => b.contributorCount - a.contributorCount || b.participation - a.participation)
+        setSelectedCoin(sorted[0]?.coin || snapshot.coins[0].coin)
+      }
+    }).catch(() => {
+      setSummary(null)
+      setData(null)
+    })
   }, [selectedCoin])
+  const loadContributors = useCallback(() => {
+    fetchJson<any[]>(`/api/hyperliquid/consensus/${selectedCoin}/contributors`).then((rows) => {
+      const enriched = rows.map(row => ({ ...row, influence: Math.abs(Number(row.weightedSignal || 0)) }))
+      setContributors(enriched)
+      if (rows.length > 0 && (!selectedTrader || !rows.some(row => row.traderAddress === selectedTrader))) {
+        setSelectedTrader(rows[0].traderAddress)
+      }
+    }).catch(() => setContributors([]))
+  }, [selectedCoin, selectedTrader])
+  const loadWalletPositions = useCallback(() => {
+    if (!selectedTrader) {
+      setWalletPositions([])
+      return
+    }
+    fetchJson<any[]>(`/api/hyperliquid/live/traders/${selectedTrader}/active-positions`)
+      .then(rows => setWalletPositions(rows.filter(row => String(row.coin).toUpperCase() === selectedCoin)))
+      .catch(() => setWalletPositions([]))
+  }, [selectedCoin, selectedTrader])
   useEffect(() => {
     load()
-    const timer = window.setInterval(load, 15000)
+    const timer = window.setInterval(load, 5000)
     return () => window.clearInterval(timer)
   }, [load])
   useEffect(() => {
-    fetchJson<any[]>(`/api/hyperliquid/consensus/${selectedCoin}/contributors`).then(setContributors).catch(() => setContributors([]))
-  }, [selectedCoin])
+    loadContributors()
+    const timer = window.setInterval(loadContributors, 5000)
+    return () => window.clearInterval(timer)
+  }, [loadContributors])
+  useEffect(() => {
+    loadWalletPositions()
+    const timer = window.setInterval(loadWalletPositions, 5000)
+    return () => window.clearInterval(timer)
+  }, [loadWalletPositions])
   const score = (coin: string) => data?.coins.find(x => x.coin === coin)?.directionScore
+  const selected = data?.coins.find(x => x.coin === selectedCoin)
+  const biasPercent = selected ? Math.max(0, Math.min(100, 50 + selected.directionScore / 2)) : 50
+  const coinRows = useMemo(() => [...(data?.coins || [])]
+    .sort((a, b) =>
+      b.contributorCount - a.contributorCount ||
+      b.participation - a.participation ||
+      Math.abs(b.directionScore) - Math.abs(a.directionScore)), [data])
+  const selectedContributor = contributors.find(x => x.traderAddress === selectedTrader)
+  const bullishRatio = (row: CoinConsensusView) => Math.max(0, Math.min(100, 50 + Number(row.directionScore || 0) / 2))
   return (
-    <HyperShell current={path} title="Smart Consensus Engine" subtitle="Coin-level directional bias generated from tracked trader exposure and historical coin skill.">
+    <HyperShell current={path} title="Live Consensus Dashboard" subtitle="5-second live coin bias board, influencer wallets, and wallet position drill-down.">
       <HyperMetricCards cards={[
+        { label: 'System started', value: summary?.trackingStartedAt ? formatTime(summary.trackingStartedAt) : '—', tone: 'info' },
+        { label: 'Last UI refresh', value: lastRefresh ? lastRefresh.toLocaleTimeString() : '—', tone: 'info' },
+        { label: 'Latest score', value: summary?.latestScoreAt ? formatTime(summary.latestScoreAt) : '—', tone: 'info' },
+        { label: 'Tracked traders', value: summary?.trackedTraders ?? '—', tone: 'info' },
+        { label: 'Active traders', value: summary?.activeTraders ?? '—', tone: 'info' },
+        { label: 'Live open positions', value: summary?.liveOpenPositions ?? '—' },
+        { label: 'Consensus coins', value: data?.coins.length ?? '—', tone: 'info' },
+        { label: 'Execution mode', value: summary?.realExecutionMode ?? '—', tone: summary?.realExecutionMode === 'Enabled' ? 'warn' : 'muted' },
         { label: 'BTC Score', value: dash(score('BTC')) },
         { label: 'ETH Score', value: dash(score('ETH')) },
         { label: 'SOL Score', value: dash(score('SOL')) },
         { label: 'HYPE Score', value: dash(score('HYPE')) },
-        { label: 'ALT Score', value: dash(data?.coins.filter(x => !['BTC','ETH','SOL','HYPE'].includes(x.coin)).reduce((a, b) => a + b.directionScore, 0)) },
-        { label: 'Risk-On Score', value: dash(data?.coins.filter(x => x.targetSide === 'LONG').reduce((a, b) => a + Math.max(0, b.directionScore), 0)) },
-        { label: 'BTC vs ALT', value: dash((score('BTC') || 0) - (score('ETH') || 0)) },
-        { label: 'Regime', value: data?.coins[0]?.targetSide === 'LONG' ? 'Risk-on / long-led' : 'Defensive / mixed', tone: 'info' },
       ]} />
-      <section className="hyper-panel">
+      <section className="hyper-panel consensus-meter-panel">
+        <div className="hyper-panel-head">
+          <strong>{selectedCoin} bullishness</strong>
+          <span>{selected ? `${biasPercent.toFixed(1)}% bullish / ${selected.targetSide} score ${selected.directionScore.toFixed(2)} / quality ${selected.qualityScore.toFixed(2)} / conflict ${(selected.conflictRatio * 100).toFixed(0)}% / contributors ${selected.contributorCount}` : '—'}</span>
+        </div>
+        <div className="consensus-meter">
+          <span>Bearish</span>
+          <div className="consensus-track">
+            <div className="consensus-zero" />
+            <div className="consensus-marker" style={{ left: `${biasPercent}%` }} />
+          </div>
+          <span>Bullish</span>
+        </div>
+      </section>
+      <section className="hyper-dashboard-grid">
+        <div className="hyper-panel">
+          <div className="hyper-panel-head">
+            <strong>All coins by trader usage</strong>
+            <span>Click a coin to inspect the wallets moving it.</span>
+          </div>
         <HyperTable
           columns={[
+            { key: 'contributorCount', label: 'Usage', numeric: true },
             { key: 'coin', label: 'Coin' },
             { key: 'targetSide', label: 'Direction' },
+            { key: 'bullishRatio', label: 'Bullish', numeric: true, render: r => (
+              <div className="consensus-ratio-cell">
+                <div className="mini-consensus-track"><span style={{ width: `${bullishRatio(r).toFixed(1)}%` }} /></div>
+                <strong>{bullishRatio(r).toFixed(1)}%</strong>
+              </div>
+            ) },
             { key: 'directionScore', label: 'Direction Score', numeric: true, render: r => dash(r.directionScore) },
             { key: 'qualityScore', label: 'Quality', numeric: true, render: r => dash(r.qualityScore) },
             { key: 'longPower', label: 'Long Power', numeric: true, render: r => dash(r.longPower) },
             { key: 'shortPower', label: 'Short Power', numeric: true, render: r => dash(r.shortPower) },
             { key: 'conflictRatio', label: 'Conflict %', numeric: true, render: r => dash(r.conflictRatio, v => `${(v * 100).toFixed(0)}%`) },
             { key: 'participation', label: 'Participation %', numeric: true, render: r => dash(r.participation, v => `${(v * 100).toFixed(0)}%`) },
-            { key: 'contributorCount', label: 'Active Traders', numeric: true },
             { key: 'targetNotionalUsd', label: 'Target OKX Notional', numeric: true, render: r => dash(r.targetNotionalUsd, formatUsd) },
-            { key: 'currentOkxNotional', label: 'Current OKX Notional', render: () => '—' },
-            { key: 'delta', label: 'Delta', render: () => '—' },
             { key: 'action', label: 'Action' },
             { key: 'skipReason', label: 'Skip reason' },
           ]}
-          rows={data?.coins || []}
+          rows={coinRows}
           getKey={(row) => row.coin}
           onRowClick={(row) => setSelectedCoin(row.coin)}
         />
-      </section>
-      <section className="hyper-panel">
-        <div className="hyper-panel-head"><strong>Top Contributors: {selectedCoin}</strong></div>
+        </div>
+        <div className="hyper-panel">
+          <div className="hyper-panel-head">
+            <strong>Wallets influencing {selectedCoin}</strong>
+            <span>Click a wallet row to inspect its active {selectedCoin} position.</span>
+          </div>
         <HyperTable
           columns={[
-            { key: 'traderAddress', label: 'Trader', render: r => <button onClick={() => routeTo(`/hyperliquid/traders/${r.traderAddress}`)}>{shortAddress(r.traderAddress)}</button> },
+            { key: 'influence', label: 'Influence', numeric: true, render: r => dash(r.influence) },
+            { key: 'traderAddress', label: 'Trader', render: r => (
+              <span>
+                {r.label ? `${r.label} ` : ''}{shortAddress(r.traderAddress)}
+              </span>
+            ) },
             { key: 'side', label: 'Side' },
             { key: 'currentNotionalUsd', label: 'Current Notional', numeric: true, render: r => dash(r.currentNotionalUsd, formatUsd) },
             { key: 'currentAccountValueUsd', label: 'Account Value', numeric: true, render: r => dash(r.currentAccountValueUsd, formatUsd) },
             { key: 'currentAllocPct', label: 'Alloc %', numeric: true, render: r => dash(r.currentAllocPct, v => `${v.toFixed(2)}%`) },
-            { key: 'historicalMedianAllocPct', label: 'Historical Median', render: () => '—' },
-            { key: 'historicalP90AllocPct', label: 'Historical P90', render: () => '—' },
+            { key: 'historicalMedianAllocPct', label: 'Historical Median', numeric: true, render: r => dash(r.historicalMedianAllocPct, v => `${v.toFixed(2)}%`) },
+            { key: 'historicalP90AllocPct', label: 'Historical P90', numeric: true, render: r => dash(r.historicalP90AllocPct, v => `${v.toFixed(2)}%`) },
+            { key: 'currentVsMedian', label: 'Vs Median', numeric: true, render: r => dash(r.currentVsMedian, v => `${v.toFixed(2)}x`) },
+            { key: 'currentVsP90', label: 'Vs P90', numeric: true, render: r => dash(r.currentVsP90, v => `${v.toFixed(2)}x`) },
             { key: 'allocationConviction', label: 'Conviction', numeric: true, render: r => dash(r.allocationConviction) },
-            { key: 'coinSkillScore', label: 'Coin Skill', numeric: true, render: r => dash(r.coinSkillScore) },
+            { key: 'coinSideSkillScore', label: 'Side Skill', numeric: true, render: r => dash(r.coinSideSkillScore ?? r.coinSkillScore) },
+            { key: 'sideClosedPositions', label: 'Side Sample', numeric: true, render: r => dash(r.sideClosedPositions) },
             { key: 'weightedSignal', label: 'Weighted Signal', numeric: true, render: r => dash(r.weightedSignal) },
             { key: 'unrealizedPnlUsd', label: 'uPnL', numeric: true, render: r => dash(r.unrealizedPnlUsd, formatUsd) },
+            { key: 'view', label: 'View', render: r => <button onClick={(event) => { event.stopPropagation(); routeTo(`/hyperliquid/traders/${r.traderAddress}`) }}>Profile</button> },
           ]}
           rows={contributors}
           getKey={(row, index) => `${row.traderAddress}-${row.coin}-${index}`}
+          onRowClick={(row) => setSelectedTrader(row.traderAddress)}
         />
+        </div>
+      </section>
+      <section className="hyper-panel">
+        <div className="hyper-panel-head">
+          <strong>{selectedContributor ? `${shortAddress(selectedContributor.traderAddress)} active ${selectedCoin} positions` : `Select a wallet affecting ${selectedCoin}`}</strong>
+          <span>{selectedContributor ? `${selectedContributor.side} signal ${dash(selectedContributor.weightedSignal)} / alloc ${dash(selectedContributor.currentAllocPct, v => `${v.toFixed(2)}%`)} / median ${dash(selectedContributor.historicalMedianAllocPct, v => `${v.toFixed(2)}%`)}` : '—'}</span>
+        </div>
+        <PositionTable rows={walletPositions} active />
       </section>
     </HyperShell>
   )
@@ -1061,6 +1169,8 @@ function HyperExecutionPage({ path }: { path: string }) {
             { key: 'coin', label: 'Coin' },
             { key: 'targetSide', label: 'Target Side' },
             { key: 'targetNotionalUsd', label: 'Target Notional', numeric: true, render: r => dash(r.targetNotionalUsd, formatUsd) },
+            { key: 'currentOkxNotionalUsd', label: 'Current OKX Notional', numeric: true, render: r => dash(r.currentOkxNotionalUsd, formatUsd) },
+            { key: 'deltaNotionalUsd', label: 'Delta', numeric: true, render: r => <span className={Number(r.deltaNotionalUsd || 0) >= 0 ? 'pos' : 'neg'}>{dash(r.deltaNotionalUsd, formatUsd)}</span> },
             { key: 'action', label: 'Action' },
             { key: 'skipReason', label: 'Skip reason' },
           ]}

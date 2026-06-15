@@ -81,6 +81,9 @@ public class WhaleTrackerDbContext : DbContext
 
     public DbSet<TraderCoinProfileEntity> TraderCoinProfiles => Set<TraderCoinProfileEntity>();
 
+    public DbSet<TraderCoinSideProfileEntity> TraderCoinSideProfiles =>
+        Set<TraderCoinSideProfileEntity>();
+
     public DbSet<TraderCoinCurrentExposureEntity> TraderCoinCurrentExposures =>
         Set<TraderCoinCurrentExposureEntity>();
 
@@ -260,9 +263,16 @@ public class WhaleTrackerDbContext : DbContext
             entity.HasIndex(e => e.ComputedAt);
         });
 
+        modelBuilder.Entity<TraderCoinSideProfileEntity>(entity =>
+        {
+            entity.HasIndex(e => new { e.TraderAddress, e.Coin, e.Side, e.WindowDays }).IsUnique();
+            entity.HasIndex(e => e.CoinSideSkillScore);
+            entity.HasIndex(e => e.ComputedAt);
+        });
+
         modelBuilder.Entity<TraderCoinCurrentExposureEntity>(entity =>
         {
-            entity.HasIndex(e => new { e.TraderAddress, e.Coin }).IsUnique();
+            entity.HasIndex(e => new { e.TraderAddress, e.Coin, e.Side }).IsUnique();
             entity.HasIndex(e => e.WeightedSignal);
             entity.HasIndex(e => e.UpdatedAt);
         });

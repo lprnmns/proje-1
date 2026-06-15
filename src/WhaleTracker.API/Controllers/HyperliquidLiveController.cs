@@ -262,18 +262,20 @@ public sealed class HyperliquidLiveController : ControllerBase
     public async Task<IActionResult> AllocationProfile(string address, CancellationToken cancellationToken)
     {
         var normalized = NormalizeAddress(address);
-        var profiles = await _db.TraderCoinProfiles.AsNoTracking()
-            .Where(x => x.TraderAddress == normalized && x.Coin != "__GENERAL__")
-            .ToListAsync(cancellationToken);
-        var exposures = await _db.TraderCoinCurrentExposures.AsNoTracking()
+        var profiles = await _db.TraderCoinSideProfiles.AsNoTracking()
             .Where(x => x.TraderAddress == normalized)
-            .ToDictionaryAsync(x => x.Coin, StringComparer.OrdinalIgnoreCase, cancellationToken);
-        return Ok(profiles.OrderByDescending(x => x.CoinSkillScore).Select(x =>
+            .ToListAsync(cancellationToken);
+        var exposures = (await _db.TraderCoinCurrentExposures.AsNoTracking()
+            .Where(x => x.TraderAddress == normalized)
+            .ToListAsync(cancellationToken))
+            .ToDictionary(x => (x.Coin.ToUpperInvariant(), x.Side.ToUpperInvariant()));
+        return Ok(profiles.OrderByDescending(x => x.CoinSideSkillScore).Select(x =>
         {
-            exposures.TryGetValue(x.Coin, out var exposure);
+            exposures.TryGetValue((x.Coin.ToUpperInvariant(), x.Side.ToUpperInvariant()), out var exposure);
             return new
             {
                 x.Coin,
+                x.Side,
                 minAllocPct = (decimal?)null,
                 p25AllocPct = (decimal?)null,
                 x.MedianAllocPct,
@@ -284,7 +286,9 @@ public sealed class HyperliquidLiveController : ControllerBase
                 currentAllocPct = exposure?.CurrentAllocPct,
                 currentVsMedian = exposure == null || x.MedianAllocPct <= 0 ? (decimal?)null : exposure.CurrentAllocPct / x.MedianAllocPct,
                 currentVsP90 = exposure == null || x.P90AllocPct <= 0 ? (decimal?)null : exposure.CurrentAllocPct / x.P90AllocPct,
-                allocationConviction = exposure?.AllocationConviction
+                allocationConviction = exposure?.AllocationConviction,
+                coinSideSkillScore = x.CoinSideSkillScore,
+                x.SampleConfidence
             };
         }));
     }
@@ -319,7 +323,55 @@ public sealed class HyperliquidLiveController : ControllerBase
             .Where(x => x.Coin == normalized)
             .OrderByDescending(x => Math.Abs(x.WeightedSignal))
             .ToListAsync(cancellationToken);
-        return Ok(rows);
+        var profiles = (await _db.TraderCoinSideProfiles.AsNoTracking()
+            .Where(x => x.Coin == normalized)
+            .ToListAsync(cancellationToken))
+            .ToDictionary(x => (
+                x.TraderAddress.ToLowerInvariant(),
+                x.Coin.ToUpperInvariant(),
+                x.Side.ToUpperInvariant()));
+        var rowAddresses = rows.Select(row => row.TraderAddress).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var labels = await _db.HyperliquidCopyTraders.AsNoTracking()
+            .Where(x => rowAddresses.Contains(x.Address))
+            .ToDictionaryAsync(x => x.Address, x => x.Label, StringComparer.OrdinalIgnoreCase, cancellationToken);
+        return Ok(rows.Select(row =>
+        {
+            profiles.TryGetValue((
+                row.TraderAddress.ToLowerInvariant(),
+                row.Coin.ToUpperInvariant(),
+                row.Side.ToUpperInvariant()), out var profile);
+            labels.TryGetValue(row.TraderAddress, out var label);
+            return new
+            {
+                row.TraderAddress,
+                label = label ?? string.Empty,
+                row.Coin,
+                row.Side,
+                row.CurrentNotionalUsd,
+                row.CurrentAccountValueUsd,
+                row.CurrentAllocPct,
+                row.UnrealizedPnlUsd,
+                row.EntryPrice,
+                row.OpenedAt,
+                row.LastSeenAt,
+                row.NormalizedExposure,
+                row.AllocationConviction,
+                row.CoinSkillScore,
+                row.SampleConfidence,
+                row.FreshnessScore,
+                row.RiskAdjustment,
+                row.WeightedSignal,
+                row.IsBaseline,
+                historicalMedianAllocPct = profile?.MedianAllocPct,
+                historicalP75AllocPct = profile?.P75AllocPct,
+                historicalP90AllocPct = profile?.P90AllocPct,
+                currentVsMedian = profile == null || profile.MedianAllocPct <= 0 ? (decimal?)null : row.CurrentAllocPct / profile.MedianAllocPct,
+                currentVsP90 = profile == null || profile.P90AllocPct <= 0 ? (decimal?)null : row.CurrentAllocPct / profile.P90AllocPct,
+                coinSideSkillScore = profile?.CoinSideSkillScore,
+                sideSampleConfidence = profile?.SampleConfidence,
+                sideClosedPositions = profile?.ClosedPositions
+            };
+        }));
     }
 
     [HttpGet("positions/active")]
@@ -350,17 +402,21 @@ public sealed class HyperliquidLiveController : ControllerBase
             .Where(x => x.IsEnabled)
             .ToListAsync(cancellationToken);
         var consensus = await _consensusService.GetSnapshotAsync(cancellationToken);
+        var okxPositions = okx?.ActivePositions ?? new List<Core.Models.Position>();
         return Ok(new
         {
             okxEquity = okx?.TotalUsd,
             realExecutionMode = traders.Any(x => x.ExecuteOrders) ? "Enabled" : "Shadow Only",
             realExecutionTraders = traders.Count(x => x.ExecuteOrders),
-            openOkxPositions = okx?.ActivePositions ?? new List<Core.Models.Position>(),
+            openOkxPositions = okxPositions,
             targetExposurePerCoin = consensus.Coins.Select(x => new
             {
                 x.Coin,
                 x.TargetSide,
                 x.TargetNotionalUsd,
+                currentOkxNotionalUsd = EstimatedSignedOkxNotional(okxPositions, x.Coin),
+                deltaNotionalUsd = DesiredSignedNotional(x.TargetSide, x.TargetNotionalUsd) -
+                    EstimatedSignedOkxNotional(okxPositions, x.Coin),
                 x.Action,
                 x.SkipReason
             }),
@@ -509,6 +565,28 @@ public sealed class HyperliquidLiveController : ControllerBase
             return null;
         }
     }
+
+    private static decimal EstimatedSignedOkxNotional(
+        IReadOnlyList<Core.Models.Position> positions,
+        string coin)
+    {
+        return positions
+            .Where(x => x.Symbol.Equals(coin, StringComparison.OrdinalIgnoreCase))
+            .Sum(x =>
+            {
+                var notional = Math.Abs(x.MarginUsd) * 10m;
+                return x.Direction.Equals("Short", StringComparison.OrdinalIgnoreCase)
+                    ? -notional
+                    : notional;
+            });
+    }
+
+    private static decimal DesiredSignedNotional(string targetSide, decimal targetNotionalUsd) =>
+        targetSide.Equals("SHORT", StringComparison.OrdinalIgnoreCase)
+            ? -Math.Abs(targetNotionalUsd)
+            : targetSide.Equals("LONG", StringComparison.OrdinalIgnoreCase)
+                ? Math.Abs(targetNotionalUsd)
+                : 0m;
 
     private static string NormalizeAddress(string value) => value.Trim().ToLowerInvariant();
 }

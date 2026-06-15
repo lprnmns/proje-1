@@ -38,7 +38,7 @@ public sealed class HyperliquidConsensusWorker : BackgroundService
                 _logger.LogWarning(ex, "Hyperliquid consensus worker tick failed.");
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(20), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
         }
     }
 }

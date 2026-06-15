@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>WhaleTracker Consensus V2 - Sistem İşleyişi</title>
+  <style>
+    @page { size: A4; margin: 18mm 16mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Arial, sans-serif;
+      color: #dce8ff;
+      background: #07101d;
+      line-height: 1.48;
+      font-size: 13px;
+    }
+    .page {
+      min-height: 100vh;
+      padding: 28px;
+      background:
+        linear-gradient(135deg, rgba(40, 220, 255, .08), transparent 28%),
+        linear-gradient(180deg, #091524, #050a13 70%);
+    }
+    h1, h2, h3 { margin: 0 0 10px; color: #f8fbff; letter-spacing: 0; }
+    h1 { font-size: 30px; }
+    h2 { margin-top: 24px; font-size: 19px; border-bottom: 1px solid #27405e; padding-bottom: 6px; }
+    h3 { margin-top: 16px; font-size: 15px; color: #8ee9ff; }
+    p { margin: 8px 0; }
+    .muted { color: #9db0ca; }
+    .tag {
+      display: inline-block;
+      border: 1px solid #285576;
+      background: #0c2033;
+      color: #8ee9ff;
+      border-radius: 6px;
+      padding: 3px 7px;
+      margin-right: 6px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+    .card {
+      border: 1px solid #21364f;
+      background: #0b1524;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 14px;
+      background: #07101d;
+      border: 1px solid #21364f;
+    }
+    th, td {
+      border-bottom: 1px solid #1a2b42;
+      padding: 7px 8px;
+      text-align: left;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+    th { color: #8ee9ff; background: #0d1b2d; font-weight: 700; }
+    td { color: #dce8ff; }
+    .good { color: #6dffb4; }
+    .bad { color: #ff7d8f; }
+    .warn { color: #ffd36b; }
+    .code {
+      font-family: "JetBrains Mono", Consolas, monospace;
+      background: #050b13;
+      border: 1px solid #223953;
+      border-radius: 8px;
+      padding: 10px;
+      color: #cfe6ff;
+      white-space: pre-wrap;
+      margin: 10px 0;
+    }
+    .bar { height: 12px; background: #1a2b42; border-radius: 999px; overflow: hidden; }
+    .bar > span { display: block; height: 100%; background: linear-gradient(90deg, #ff6882, #ffd36b, #6dffb4); }
+    .footer { margin-top: 28px; color: #7f94b3; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <span class="tag">WhaleTracker</span>
+    <span class="tag">Consensus V2</span>
+    <span class="tag">Shadow-first execution</span>
+    <h1>40 Trader'dan Tek Karar Verici Üretme Sistemi</h1>
+    <p class="muted">
+      Bu doküman, Hyperliquid trader pozisyonlarını direkt tek tek kopyalamak yerine,
+      traderların coin bazlı geçmiş allocation davranışını kullanarak kontrollü bir coin consensus motoru üretir.
+    </p>
+
+    <h2>1. Ana Fikir</h2>
+    <p>
+      Eski yaklaşımda her trader için ayrı hedef oluşturuluyor ve aynı coin/yöndeki hedefler OKX'te tek pozisyonda birleşiyordu.
+      Bu yüzden "trader başı 10 USDT" ayarı BTC gibi coinlerde 6-7 trader birleşince 50-60 USDT margin pozisyona dönüşebiliyordu.
+    </p>
+    <p>
+      Yeni yaklaşımda soru değişiyor:
+      <strong>"Bu trader şu an bu coin için kendi geçmişine göre ne kadar ciddi pozisyon almış?"</strong>
+      Cevap, coin consensus barına katkı olarak yazılıyor. OKX emri ise sadece aggregate consensus yeterince güçlü, kaliteli ve kararlıysa üretiliyor.
+    </p>
+
+    <h2>2. Allocation Nasıl Hesaplanır?</h2>
+    <p>Perp traderlarda margin yanıltıcıdır. Ana ölçü notional/account oranıdır.</p>
+    <div class="code">alloc_pct = position_notional_usd / source_account_value_usd * 100</div>
+    <table>
+      <thead>
+        <tr><th>Trader</th><th>Coin</th><th>Account</th><th>Position Notional</th><th>Alloc</th><th>Yorum</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>A</td><td>BTC short</td><td>$100,000</td><td>$500,000</td><td>500%</td><td>10x perp için normal, güçlü pozisyon</td></tr>
+        <tr><td>B</td><td>BTC short</td><td>$700,000</td><td>$70,000</td><td>10%</td><td>Zayıf/deneme pozisyonu</td></tr>
+        <tr><td>C</td><td>ETH long</td><td>$50,000</td><td>$150,000</td><td>300%</td><td>Ciddi directional sinyal</td></tr>
+      </tbody>
+    </table>
+
+    <h2>3. Geçmiş Profil: Coin + Side Bazlı</h2>
+    <p>
+      BTC long ve BTC short aynı davranış değildir. Bu yüzden profil anahtarı:
+      <strong>trader + coin + side</strong>.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Alan</th><th>Anlam</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>median_alloc_pct</td><td>Traderın bu coin/yönde tipik pozisyon büyüklüğü</td></tr>
+        <tr><td>p75_alloc_pct</td><td>Normalden güçlü pozisyon sınırı</td></tr>
+        <tr><td>p90_alloc_pct</td><td>Çok güçlü conviction sınırı</td></tr>
+        <tr><td>coin_side_skill</td><td>Bu coin/yöndeki geçmiş PnL, winrate, profit factor ve sample kalitesinden gelen skor</td></tr>
+        <tr><td>sample_confidence</td><td>Kaç kapalı pozisyonla ölçüldüğü</td></tr>
+      </tbody>
+    </table>
+
+    <h2>4. Allocation Conviction Örneği</h2>
+    <p>Trader A'nın geçmiş BTC short profili:</p>
+    <table>
+      <thead>
+        <tr><th>Median</th><th>P75</th><th>P90</th><th>Şu Anki BTC Short Alloc</th><th>Conviction</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>180%</td><td>320%</td><td>520%</td><td>90%</td><td class="warn">0.35 - küçük sinyal</td></tr>
+        <tr><td>180%</td><td>320%</td><td>520%</td><td>220%</td><td>0.70 - normal/üstü</td></tr>
+        <tr><td>180%</td><td>320%</td><td>520%</td><td>610%</td><td class="good">1.00 - çok güçlü</td></tr>
+        <tr><td>180%</td><td>320%</td><td>520%</td><td>1,400%</td><td class="warn">0.80 - güçlü ama risk penalty</td></tr>
+      </tbody>
+    </table>
+
+    <h2>5. Fill Parçalama Sorunu Nasıl Çözülür?</h2>
+    <p>
+      Trader 100k BTC pozisyonu 100 adet 1k emirle açabilir. Sistem fill'i değil, pozisyon episode'unun güncel toplam notionalını izler.
+      Böylece 1k emir sadece küçük katkı verir; pozisyon 100k'ya ulaştığında consensus gerçekten güçlenir.
+    </p>
+    <div class="code">current_position_notional = latest reconstructed active position notional
+current_alloc_pct = current_position_notional / latest_account_value * 100</div>
+
+    <h2>6. Weighted Signal Formülü</h2>
+    <div class="code">weighted_signal =
+direction
+* normalized_exposure
+* trader_quality
+* coin_side_skill
+* sample_confidence
+* allocation_conviction
+* freshness
+* risk_adjustment
+* baseline_penalty</div>
+    <p>
+      Direction long için +1, short için -1 olur. Baseline pozisyonlar daha düşük ağırlık alır; çünkü sistem başlamadan önce açılmış edge'i sonradan yakalamış olabiliriz.
+    </p>
+
+    <h2>7. BTC Consensus Örneği</h2>
+    <table>
+      <thead>
+        <tr><th>Trader</th><th>Side</th><th>Current Alloc</th><th>Median/P90</th><th>Skill</th><th>Weighted Signal</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>A</td><td class="bad">Short</td><td>610%</td><td>180% / 520%</td><td>0.82</td><td class="bad">-0.62</td></tr>
+        <tr><td>B</td><td class="bad">Short</td><td>300%</td><td>210% / 430%</td><td>0.75</td><td class="bad">-0.39</td></tr>
+        <tr><td>C</td><td class="good">Long</td><td>70%</td><td>250% / 600%</td><td>0.91</td><td class="good">+0.08</td></tr>
+        <tr><td>D</td><td class="bad">Short</td><td>50%</td><td>300% / 700%</td><td>0.65</td><td class="bad">-0.04</td></tr>
+      </tbody>
+    </table>
+    <p>Sonuç:</p>
+    <div class="grid">
+      <div class="card">
+        <strong>BTC Direction</strong>
+        <p class="bad">Bearish / Short bias</p>
+        <div class="bar"><span style="width: 22%"></span></div>
+      </div>
+      <div class="card">
+        <strong>Karar</strong>
+        <p>Short power güçlü, long taraf zayıf. Conflict düşükse OKX target short üretilebilir.</p>
+      </div>
+    </div>
+
+    <h2>8. OKX Emri Ne Zaman Atılır?</h2>
+    <p>Consensus her küçük hareket ettiğinde emir atılmaz. Execution engine eşik ve cooldown ile çalışır.</p>
+    <table>
+      <thead>
+        <tr><th>Durum</th><th>Kural</th><th>Aksiyon</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Yeni açılış</td><td>|score| >= 35, quality >= 55, conflict < 45%</td><td>Target üret</td></tr>
+        <tr><td>Artırma</td><td>Target farkı mevcut pozisyonun %20'sinden büyük</td><td>Rebalance</td></tr>
+        <tr><td>Küçük oynama</td><td>Target farkı OKX min order altında</td><td>Bekle</td></tr>
+        <tr><td>Ters sinyal</td><td>Karşı yön score >= 35</td><td>Kapat veya flip için alarm</td></tr>
+        <tr><td>Conflict</td><td>Long ve short power birbirine yakın</td><td>Watch / pozisyon küçült</td></tr>
+      </tbody>
+    </table>
+
+    <h2>9. AI'nin Rolü</h2>
+    <p>
+      AI ham fill'lere bakıp emir vermemeli. AI'ye verilecek ana veri:
+      coin consensus snapshot, top contributors, quality/conflict, current OKX exposure ve risk limitleri.
+      Nihai risk ve min-order kuralları deterministik kalır.
+    </p>
+
+    <h2>10. Beklenen Kazanç</h2>
+    <ul>
+      <li>40 trader tek tek kopyalanmaz; bilgileri coin bazında birleşir.</li>
+      <li>1k fill parçaları gereksiz emir üretmez; toplam pozisyon büyüdükçe sinyal güçlenir.</li>
+      <li>Traderın alışkanlığına göre küçük/normal/çok güçlü pozisyon ayrımı yapılır.</li>
+      <li>OKX'te sembol başı margin patlaması engellenir.</li>
+      <li>UI'da her coin için bullish/bearish bar ve katkı veren cüzdanlar okunabilir hale gelir.</li>
+    </ul>
+
+    <p class="footer">
+      Generated for WhaleTracker Consensus V2 implementation. Shadow-first validation recommended before enabling real execution.
+    </p>
+  </main>
+</body>
+</html>
