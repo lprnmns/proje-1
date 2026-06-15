@@ -56,6 +56,8 @@ public sealed class HyperliquidLiveController : ControllerBase
         var plan = await _executionService.BuildPlanAsync(cancellationToken);
         var consensusMode = plan.Config.WorkerEnabled ? "Consensus Enabled" : "Shadow Only";
         var perTraderMode = enabled.Any(x => x.ExecuteOrders) ? "Per-Trader Enabled" : consensusMode;
+        var trackingStartedAt = enabled.Select(x => (DateTime?)x.CreatedAt).OrderBy(x => x).FirstOrDefault();
+        var liveClosed = closed.Where(x => PositionClosedDuringTracking(x, trackingStartedAt)).ToList();
 
         return Ok(new
         {
@@ -63,9 +65,9 @@ public sealed class HyperliquidLiveController : ControllerBase
             activeTraders = active.Select(x => x.TraderAddress).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
             liveOpenPositions = active.Count(x => x.OpenedFromTracking),
             baselineOpenPositions = active.Count(x => !x.OpenedFromTracking),
-            closedLivePositions = closed.Count(x => x.OpenedFromTracking),
-            sourceRealizedPnlUsd = latestScores.Sum(x => x.RealizedPnlUsd),
-            sourceUnrealizedPnlUsd = latestScores.Sum(x => x.UnrealizedPnlUsd),
+            closedLivePositions = liveClosed.Count,
+            sourceRealizedPnlUsd = liveClosed.Sum(x => x.NetPnlUsd),
+            sourceUnrealizedPnlUsd = active.Sum(x => x.UnrealizedPnlUsd),
             pureVirtualPnlUsd = (decimal?)null,
             executableVirtualPnlUsd = (decimal?)null,
             realOkxPnlUsd = (decimal?)null,
@@ -74,7 +76,7 @@ public sealed class HyperliquidLiveController : ControllerBase
             realExecutionTraders = enabled.Count(x => x.ExecuteOrders),
             consensusExecutionEnabled = plan.Config.WorkerEnabled,
             consensusExecutionConfig = plan.Config,
-            trackingStartedAt = enabled.Select(x => (DateTime?)x.CreatedAt).OrderBy(x => x).FirstOrDefault(),
+            trackingStartedAt,
             latestScoreAt = latestScores.Select(x => (DateTime?)x.ScoredAt).OrderByDescending(x => x).FirstOrDefault(),
             checkedAt = DateTime.UtcNow
         });
@@ -96,21 +98,40 @@ public sealed class HyperliquidLiveController : ControllerBase
             .AsNoTracking()
             .Where(x => x.Status == "LIVE_OPEN" || x.Status == "BASELINE_OPEN")
             .ToListAsync(cancellationToken);
+        var trackingStartedAt = traders.Values.Select(x => (DateTime?)x.CreatedAt).OrderBy(x => x).FirstOrDefault();
+        var closedPositions = await _db.HyperliquidLivePositions
+            .AsNoTracking()
+            .Where(x => x.Status == "CLOSED")
+            .ToListAsync(cancellationToken);
+        var positionsByTrader = activePositions
+            .Concat(closedPositions.Where(x => PositionClosedDuringTracking(x, trackingStartedAt)))
+            .GroupBy(x => x.TraderAddress, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
+        var topCoinsByTrader = await TopCoinsByTrader(cancellationToken);
 
         var rows = traders.Values
             .OrderByDescending(x => x.IsEnabled)
             .ThenByDescending(x =>
-                latestScores.FirstOrDefault(s => s.TraderAddress.Equals(x.Address, StringComparison.OrdinalIgnoreCase))?.LiveScore ?? 0)
+                CalculateLiveMetrics(
+                    positionsByTrader.TryGetValue(x.Address, out var all) ? all : new List<Data.Entities.HyperliquidLivePositionEntity>(),
+                    trackingStartedAt).LiveScore)
+            .ThenByDescending(x =>
+                CalculateLiveMetrics(
+                    positionsByTrader.TryGetValue(x.Address, out var all) ? all : new List<Data.Entities.HyperliquidLivePositionEntity>(),
+                    trackingStartedAt).RealizedPnlUsd)
             .Select((trader, index) =>
             {
-                var score = latestScores.FirstOrDefault(x => x.TraderAddress.Equals(trader.Address, StringComparison.OrdinalIgnoreCase));
                 generalProfiles.TryGetValue(trader.Address, out var profile);
                 var traderActive = activePositions
                     .Where(x => x.TraderAddress.Equals(trader.Address, StringComparison.OrdinalIgnoreCase))
                     .ToList();
+                var metrics = CalculateLiveMetrics(
+                    positionsByTrader.TryGetValue(trader.Address, out var all) ? all : traderActive,
+                    trackingStartedAt);
                 var accountValue = traderActive
                     .Select(x => x.LatestSourceAccountValueUsd > 0 ? x.LatestSourceAccountValueUsd : x.SourceAccountValueAtOpen)
                     .FirstOrDefault(x => x > 0);
+                topCoinsByTrader.TryGetValue(trader.Address, out var topCoins);
                 return new
                 {
                     rank = index + 1,
@@ -119,51 +140,41 @@ public sealed class HyperliquidLiveController : ControllerBase
                     trader.Address,
                     trader.IsEnabled,
                     trader.ExecuteOrders,
-                    liveScore = score?.LiveScore,
-                    confidence = score?.Confidence,
+                    liveScore = metrics.LiveScore,
+                    confidence = metrics.Confidence,
                     historicalScore = profile?.HistoricalQualityScore,
                     historicalConfidence = profile?.HistoricalConfidenceScore,
                     currentAccountValue = accountValue == 0 ? (decimal?)null : accountValue,
-                    liveRealizedPnlUsd = score?.RealizedPnlUsd,
-                    liveRealizedPnlPct = score?.PnlPctAccount,
+                    liveRealizedPnlUsd = metrics.RealizedPnlUsd,
+                    liveRealizedPnlPct = metrics.PnlPctAccount,
                     pureVirtualPnl = (decimal?)null,
                     executableVirtualPnl = (decimal?)null,
                     realOkxPnl = (decimal?)null,
                     openPositions = traderActive.Count,
-                    closedPositions = score?.ClosedPositions ?? 0,
-                    wins = score?.Wins,
-                    losses = score?.Losses,
-                    winrate = score?.WinRate,
-                    grossProfitUsd = (decimal?)null,
-                    grossLossUsd = (decimal?)null,
+                    closedPositions = metrics.ClosedPositions,
+                    wins = metrics.Wins,
+                    losses = metrics.Losses,
+                    winrate = metrics.WinRate,
+                    grossProfitUsd = metrics.GrossProfitUsd,
+                    grossLossUsd = metrics.GrossLossUsd,
                     profitFactor = profile?.ProfitFactor,
-                    avgHoldSeconds = score?.AvgHoldSeconds ?? profile?.AvgHoldSeconds,
+                    avgHoldSeconds = metrics.AvgHoldSeconds,
                     medianHoldSeconds = profile?.MedianHoldSeconds,
-                    bestTrade = score?.BestTradeUsd ?? profile?.BestTradePnlUsd,
-                    worstTrade = score?.WorstTradeUsd ?? profile?.WorstTradePnlUsd,
+                    bestTrade = metrics.BestTradeUsd,
+                    worstTrade = metrics.WorstTradeUsd,
                     maxDrawdown = (decimal?)null,
                     okxCopyablePnl = profile?.NetPnlUsd,
                     minOrderRejectRate = (decimal?)null,
                     conflictRate = (decimal?)null,
                     lastSignalAt = trader.LastSyncAt ?? trader.LastFillPollAt,
-                    topCoins = profile == null ? string.Empty : awaitTopCoinsPlaceholder(profile.TraderAddress)
+                    topCoins = topCoins ?? string.Empty,
+                    source = "live_positions"
                 };
             })
             .ToList();
 
         return Ok(rows);
 
-        string awaitTopCoinsPlaceholder(string address)
-        {
-            var top = _db.TraderCoinProfiles
-                .AsNoTracking()
-                .Where(x => x.TraderAddress == address && x.Coin != "__GENERAL__")
-                .OrderByDescending(x => x.NetPnlUsd)
-                .Take(5)
-                .Select(x => $"{x.Coin}:{x.NetPnlUsd:0}")
-                .ToList();
-            return string.Join("; ", top);
-        }
     }
 
     [HttpGet("live/traders/{address}")]
@@ -177,12 +188,12 @@ public sealed class HyperliquidLiveController : ControllerBase
             return NotFound();
         }
 
-        var score = (await LatestScores(cancellationToken))
-            .FirstOrDefault(x => x.TraderAddress.Equals(normalized, StringComparison.OrdinalIgnoreCase));
         var general = await _db.TraderCoinProfiles.AsNoTracking()
             .FirstOrDefaultAsync(x => x.TraderAddress == normalized && x.Coin == "__GENERAL__", cancellationToken);
         var active = await TraderPositions(normalized, true, cancellationToken);
         var closed = await TraderPositions(normalized, false, cancellationToken);
+        var trackingStartedAt = await TrackingStartedAt(cancellationToken);
+        var liveMetrics = CalculateLiveMetrics(active.Concat(closed).ToList(), trackingStartedAt);
         var accountValue = active
             .Select(x => x.LatestSourceAccountValueUsd > 0 ? x.LatestSourceAccountValueUsd : x.SourceAccountValueAtOpen)
             .FirstOrDefault(x => x > 0);
@@ -195,8 +206,8 @@ public sealed class HyperliquidLiveController : ControllerBase
             trader.IsEnabled,
             trader.ExecuteOrders,
             historicalScore = general?.HistoricalQualityScore,
-            liveScore = score?.LiveScore,
-            confidence = score?.Confidence ?? general?.HistoricalConfidenceScore,
+            liveScore = liveMetrics.LiveScore,
+            confidence = liveMetrics.Confidence,
             currentAccountValue = accountValue == 0 ? (decimal?)null : accountValue,
             currentWithdrawable = (decimal?)null,
             currentMarginUsed = (decimal?)null,
@@ -208,26 +219,26 @@ public sealed class HyperliquidLiveController : ControllerBase
             {
                 realized30dPnlUsd = general?.NetPnlUsd,
                 realized30dPnlPct = (decimal?)null,
-                liveRealizedPnlUsd = score?.RealizedPnlUsd,
-                liveRealizedPnlPct = score?.PnlPctAccount,
-                totalClosedPositions = general?.ClosedPositions,
-                winningPositions = general?.WinningPositions,
-                losingPositions = general?.LosingPositions,
-                winrate = general?.WinRate ?? score?.WinRate,
-                grossProfitUsd = general?.GrossProfitUsd,
-                grossLossUsd = general?.GrossLossUsd,
+                liveRealizedPnlUsd = liveMetrics.RealizedPnlUsd,
+                liveRealizedPnlPct = liveMetrics.PnlPctAccount,
+                totalClosedPositions = liveMetrics.ClosedPositions,
+                winningPositions = liveMetrics.Wins,
+                losingPositions = liveMetrics.Losses,
+                winrate = liveMetrics.WinRate,
+                grossProfitUsd = liveMetrics.GrossProfitUsd,
+                grossLossUsd = liveMetrics.GrossLossUsd,
                 profitFactor = general?.ProfitFactor,
-                averageHoldSeconds = general?.AvgHoldSeconds,
+                averageHoldSeconds = liveMetrics.AvgHoldSeconds,
                 medianHoldSeconds = general?.MedianHoldSeconds,
-                bestTrade = general?.BestTradePnlUsd ?? score?.BestTradeUsd,
-                worstTrade = general?.WorstTradePnlUsd ?? score?.WorstTradeUsd,
+                bestTrade = liveMetrics.BestTradeUsd,
+                worstTrade = liveMetrics.WorstTradeUsd,
                 maxDrawdown = (decimal?)null,
                 okxCopyablePnl = general?.NetPnlUsd,
                 pureVirtualCopyPnl = (decimal?)null,
                 executableVirtualCopyPnl = (decimal?)null,
                 realOkxCopiedPnl = (decimal?)null,
                 minOrderRejectRate = (decimal?)null,
-                skippedSignalCount = score?.SkippedPositions
+                skippedSignalCount = (int?)null
             }
         });
     }
@@ -506,6 +517,135 @@ public sealed class HyperliquidLiveController : ControllerBase
 
     [HttpPost("execution/enable-shadow-only")]
     public Task<IActionResult> EnableShadowOnly(CancellationToken cancellationToken) => DisableReal(cancellationToken);
+
+    private async Task<Dictionary<string, string>> TopCoinsByTrader(CancellationToken cancellationToken)
+    {
+        var profiles = await _db.TraderCoinProfiles
+            .AsNoTracking()
+            .Where(x => x.Coin != "__GENERAL__")
+            .OrderBy(x => x.TraderAddress)
+            .ThenByDescending(x => x.NetPnlUsd)
+            .ToListAsync(cancellationToken);
+
+        return profiles
+            .GroupBy(x => x.TraderAddress, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                x => x.Key,
+                x => string.Join("; ", x.Take(5).Select(row => $"{row.Coin}:{row.NetPnlUsd:0}")),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task<DateTime?> TrackingStartedAt(CancellationToken cancellationToken) =>
+        await _db.HyperliquidCopyTraders
+            .AsNoTracking()
+            .Where(x => x.IsEnabled)
+            .Select(x => (DateTime?)x.CreatedAt)
+            .OrderBy(x => x)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private static bool PositionClosedDuringTracking(
+        Data.Entities.HyperliquidLivePositionEntity position,
+        DateTime? trackingStartedAt)
+    {
+        if (position.Status != "CLOSED")
+        {
+            return false;
+        }
+
+        if (trackingStartedAt == null)
+        {
+            return true;
+        }
+
+        var closedAt = position.ClosedAt ?? position.UpdatedAt;
+        return closedAt >= trackingStartedAt.Value;
+    }
+
+    private static LivePositionMetrics CalculateLiveMetrics(
+        IReadOnlyCollection<Data.Entities.HyperliquidLivePositionEntity> positions,
+        DateTime? trackingStartedAt)
+    {
+        var liveClosed = positions
+            .Where(x => PositionClosedDuringTracking(x, trackingStartedAt))
+            .ToList();
+        var liveActive = positions
+            .Where(x => x.Status == "LIVE_OPEN" || x.Status == "BASELINE_OPEN")
+            .ToList();
+        var allOpen = positions
+            .Where(x => x.Status == "LIVE_OPEN" || x.Status == "BASELINE_OPEN")
+            .ToList();
+        var wins = liveClosed.Count(x => x.NetPnlUsd > 0);
+        var losses = liveClosed.Count(x => x.NetPnlUsd < 0);
+        var grossProfit = liveClosed.Where(x => x.NetPnlUsd > 0).Sum(x => x.NetPnlUsd);
+        var grossLoss = liveClosed.Where(x => x.NetPnlUsd < 0).Sum(x => x.NetPnlUsd);
+        var realized = liveClosed.Sum(x => x.NetPnlUsd);
+        var unrealized = liveActive.Sum(x => x.UnrealizedPnlUsd);
+        var closedCount = liveClosed.Count;
+        var winRate = closedCount > 0 ? wins / (decimal)closedCount * 100m : 0m;
+        var averageAccount = liveClosed
+            .Where(x => x.SourceAccountValueAtOpen > 0)
+            .Select(x => x.SourceAccountValueAtOpen)
+            .DefaultIfEmpty(liveActive.Select(x => x.LatestSourceAccountValueUsd).FirstOrDefault(x => x > 0))
+            .Average();
+        var pnlPctAccount = averageAccount > 0 ? realized / averageAccount * 100m : 0m;
+        var avgHoldSeconds = liveClosed
+            .Where(x => x.ClosedAt != null)
+            .Select(x => (decimal)(x.ClosedAt!.Value - x.OpenedAt).TotalSeconds)
+            .DefaultIfEmpty(0)
+            .Average();
+        var best = liveClosed.Select(x => x.NetPnlUsd).DefaultIfEmpty(0).Max();
+        var worst = liveClosed.Select(x => x.NetPnlUsd).DefaultIfEmpty(0).Min();
+        var copyable = positions.Count(x => x.IsOkxTradable);
+        var liveSampleCount = closedCount + liveActive.Count;
+        var sampleScore = Math.Min(25m, closedCount * 3m + liveActive.Count);
+        var pnlScore = liveSampleCount > 0 ? Math.Clamp(17.5m + pnlPctAccount * 5m, 0m, 35m) : 0m;
+        var winScore = closedCount > 0 ? Math.Clamp(winRate / 100m * 20m, 0m, 20m) : 0m;
+        var copyScore = liveSampleCount > 0 && positions.Count > 0
+            ? Math.Clamp(copyable / (decimal)positions.Count * 15m, 0m, 15m)
+            : 0m;
+        var liveScore = liveSampleCount > 0
+            ? Math.Clamp(sampleScore + pnlScore + winScore + copyScore, 0m, 100m)
+            : 0m;
+        var confidence = liveSampleCount > 0
+            ? Math.Clamp(closedCount * 5m + liveActive.Count * 3m + copyable, 0m, 100m)
+            : 0m;
+
+        return new LivePositionMetrics(
+            liveScore,
+            confidence,
+            realized,
+            unrealized,
+            pnlPctAccount,
+            closedCount,
+            liveActive.Count,
+            allOpen.Count,
+            wins,
+            losses,
+            winRate,
+            grossProfit,
+            grossLoss,
+            avgHoldSeconds,
+            best,
+            worst);
+    }
+
+    private sealed record LivePositionMetrics(
+        decimal LiveScore,
+        decimal Confidence,
+        decimal RealizedPnlUsd,
+        decimal UnrealizedPnlUsd,
+        decimal PnlPctAccount,
+        int ClosedPositions,
+        int LiveActivePositions,
+        int AllOpenPositions,
+        int Wins,
+        int Losses,
+        decimal WinRate,
+        decimal GrossProfitUsd,
+        decimal GrossLossUsd,
+        decimal AvgHoldSeconds,
+        decimal BestTradeUsd,
+        decimal WorstTradeUsd);
 
     private async Task<List<Data.Entities.HyperliquidLiveScoreSnapshotEntity>> LatestScores(CancellationToken cancellationToken) =>
         (await _db.HyperliquidLiveScoreSnapshots
