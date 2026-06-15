@@ -444,6 +444,49 @@ public sealed class HyperliquidLiveController : ControllerBase
             okx?.TotalUsd ?? 100m));
     }
 
+    [HttpPost("execution/apply-plan")]
+    public async Task<IActionResult> ApplyExecutionPlan(CancellationToken cancellationToken)
+    {
+        await _db.HyperliquidCopyTraders.ExecuteUpdateAsync(
+            setters => setters.SetProperty(x => x.ExecuteOrders, false).SetProperty(x => x.UpdatedAt, DateTime.UtcNow),
+            cancellationToken);
+
+        var okx = await SafeOkxAccount(cancellationToken);
+        var consensus = await _consensusService.GetSnapshotAsync(cancellationToken);
+        var plan = BuildShadowExecutionPlan(
+            consensus.Coins,
+            okx?.ActivePositions ?? new List<Core.Models.Position>(),
+            okx?.TotalUsd ?? 100m);
+
+        var results = new List<object>();
+        foreach (var row in plan.Rows.Where(x => x.Action is not ("SKIP" or "HOLD")))
+        {
+            var before = await _okxService.GetAllPositionsAsync();
+            var rowResults = await ApplyPlanRow(row, before, cancellationToken);
+            results.Add(new
+            {
+                row.Coin,
+                row.Action,
+                row.TargetSide,
+                row.TargetMarginUsd,
+                row.SignedTargetNotionalUsd,
+                results = rowResults
+            });
+        }
+
+        var after = await _okxService.GetAllPositionsAsync();
+        return Ok(new
+        {
+            success = results.SelectMany(x => ((IEnumerable<object>)x.GetType().GetProperty("results")!.GetValue(x)!)).All(ResultSuccess),
+            mode = "Consensus real apply",
+            warning = "Legacy per-trader Hyperliquid ExecuteOrders flags were forced off before applying this consensus plan.",
+            plan.Config,
+            plan.Summary,
+            results,
+            openOkxPositions = after
+        });
+    }
+
     [HttpGet("execution/orders")]
     public async Task<IActionResult> ExecutionOrders(CancellationToken cancellationToken)
     {
@@ -733,6 +776,103 @@ public sealed class HyperliquidLiveController : ControllerBase
         }
 
         return string.Empty;
+    }
+
+    private async Task<List<object>> ApplyPlanRow(
+        ShadowExecutionPlanRow row,
+        IReadOnlyList<Core.Models.Position> positions,
+        CancellationToken cancellationToken)
+    {
+        var results = new List<object>();
+        var longPosition = positions.FirstOrDefault(x =>
+            x.Symbol.Equals(row.Coin, StringComparison.OrdinalIgnoreCase) &&
+            x.Direction.Equals("Long", StringComparison.OrdinalIgnoreCase));
+        var shortPosition = positions.FirstOrDefault(x =>
+            x.Symbol.Equals(row.Coin, StringComparison.OrdinalIgnoreCase) &&
+            x.Direction.Equals("Short", StringComparison.OrdinalIgnoreCase));
+
+        if (row.TargetSide == "LONG")
+        {
+            if (shortPosition is { MarginUsd: > 0 })
+            {
+                results.Add(await ExecuteSignal(row.Coin, Core.Models.TradeAction.CLOSE_SHORT, shortPosition.MarginUsd, "Close opposite short before consensus long"));
+            }
+
+            var currentMargin = longPosition?.MarginUsd ?? 0m;
+            var deltaMargin = row.TargetMarginUsd - currentMargin;
+            if (deltaMargin > 0)
+            {
+                results.Add(await ExecuteSignal(row.Coin, Core.Models.TradeAction.OPEN_LONG, deltaMargin, "Consensus target long delta"));
+            }
+            else if (deltaMargin < 0)
+            {
+                results.Add(await ExecuteSignal(row.Coin, Core.Models.TradeAction.CLOSE_LONG, Math.Abs(deltaMargin), "Consensus reduce long delta"));
+            }
+        }
+        else if (row.TargetSide == "SHORT")
+        {
+            if (longPosition is { MarginUsd: > 0 })
+            {
+                results.Add(await ExecuteSignal(row.Coin, Core.Models.TradeAction.CLOSE_LONG, longPosition.MarginUsd, "Close opposite long before consensus short"));
+            }
+
+            var currentMargin = shortPosition?.MarginUsd ?? 0m;
+            var deltaMargin = row.TargetMarginUsd - currentMargin;
+            if (deltaMargin > 0)
+            {
+                results.Add(await ExecuteSignal(row.Coin, Core.Models.TradeAction.OPEN_SHORT, deltaMargin, "Consensus target short delta"));
+            }
+            else if (deltaMargin < 0)
+            {
+                results.Add(await ExecuteSignal(row.Coin, Core.Models.TradeAction.CLOSE_SHORT, Math.Abs(deltaMargin), "Consensus reduce short delta"));
+            }
+        }
+        else
+        {
+            if (longPosition is { MarginUsd: > 0 })
+            {
+                results.Add(await ExecuteSignal(row.Coin, Core.Models.TradeAction.CLOSE_LONG, longPosition.MarginUsd, "Consensus flat long"));
+            }
+
+            if (shortPosition is { MarginUsd: > 0 })
+            {
+                results.Add(await ExecuteSignal(row.Coin, Core.Models.TradeAction.CLOSE_SHORT, shortPosition.MarginUsd, "Consensus flat short"));
+            }
+        }
+
+        return results;
+
+        async Task<object> ExecuteSignal(string coin, string action, decimal margin, string reason)
+        {
+            var trade = await _okxService.ExecuteTradeAsync(new Core.Models.TradeSignal
+            {
+                Decision = "TRADE",
+                Symbol = coin,
+                Action = action,
+                Leverage = (int)ShadowLeverage,
+                MarginAmountUSDT = margin,
+                TradeConfidence = 100,
+                SourceTxHash = $"hl-consensus:{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
+                Reason = reason
+            });
+
+            return new
+            {
+                success = trade.Success,
+                action,
+                coin,
+                requestedMarginUsd = margin,
+                trade.OrderId,
+                trade.Size,
+                trade.ErrorMessage
+            };
+        }
+    }
+
+    private static bool ResultSuccess(object value)
+    {
+        var property = value.GetType().GetProperty("success");
+        return property?.GetValue(value) is true;
     }
 
     private static decimal EstimatedSignedOkxNotional(
