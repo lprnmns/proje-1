@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import ForceGraph3D from 'react-force-graph-3d'
 import SpriteText from 'three-spritetext'
 import * as THREE from 'three'
@@ -158,103 +158,6 @@ type TraderDiscoveryCandidate = {
   lastTradeUtc: string
 }
 
-type HyperliquidRun = {
-  id: string
-  createdAt: string
-  traderCount: number
-  hasSummary: boolean
-  hasHistoricalScoreboard: boolean
-}
-
-type HyperliquidTraderSummary = Record<string, string>
-type HyperliquidScoreRow = Record<string, string>
-
-type HyperliquidTraderDetail = {
-  address: string
-  summary: HyperliquidTraderSummary
-  activePositions: Array<Record<string, string>>
-  closedPositions: Array<Record<string, string>>
-  positionEvents: Array<Record<string, string>>
-  coinSummary: Array<Record<string, string>>
-  fills: Array<Record<string, string>>
-}
-
-type HyperliquidLiveTraderScore = {
-  traderAddress: string
-  label: string
-  isEnabled: boolean
-  executeOrders: boolean
-  liveScore: number
-  confidence: number
-  realizedPnlUsd: number
-  unrealizedPnlUsd: number
-  netPnlUsd: number
-  pnlPctAccount: number
-  closedPositions: number
-  activePositions: number
-  wins: number
-  losses: number
-  winRate: number
-  okxCopyablePositions: number
-  copiedPositions: number
-  skippedPositions: number
-  avgHoldSeconds: number
-  bestTradeUsd: number
-  worstTradeUsd: number
-  scoredAt: string
-}
-
-type HyperliquidLivePosition = {
-  id: number
-  traderAddress: string
-  coin: string
-  okxSymbol: string
-  side: string
-  status: string
-  openedAt: string
-  lastSeenAt: string
-  closedAt?: string
-  entryPrice: number
-  exitPrice: number
-  currentSize: number
-  maxSize: number
-  currentNotionalUsd: number
-  maxNotionalUsd: number
-  positionPctOfAccount: number
-  unrealizedPnlUsd: number
-  realizedPnlUsd: number
-  feeUsd: number
-  netPnlUsd: number
-  openedFromTracking: boolean
-  isOkxTradable: boolean
-  copyStatus: string
-  skipReason: string
-  durationSeconds: number
-  pnlPctAccount: number
-  pnlPctNotional: number
-}
-
-type HyperliquidLiveFill = {
-  traderAddress: string
-  coin: string
-  okxSymbol: string
-  direction: string
-  side: string
-  price: number
-  size: number
-  closedPnlUsd: number
-  feeUsd: number
-  exchangeTime: string
-}
-
-type HyperliquidLiveLeaderboard = {
-  checkedAt: string
-  traders: HyperliquidLiveTraderScore[]
-  activePositions: HyperliquidLivePosition[]
-  closedPositions: HyperliquidLivePosition[]
-  recentFills: HyperliquidLiveFill[]
-}
-
 type CoinConsensusView = {
   id: number
   coin: string
@@ -327,7 +230,7 @@ type GraphLink = {
   flowExpiresAt?: number
 }
 
-type Tab = 'events' | 'wallets' | 'insider' | 'hyperliquid' | 'chat'
+type Tab = 'events' | 'wallets' | 'insider' | 'chat'
 
 type ChatAiMeta = {
   provider: string
@@ -560,7 +463,623 @@ function AiCoreOrb({ bias }: { bias: string }) {
   )
 }
 
+type HyperSummary = Record<string, any>
+type HyperTraderRow = Record<string, any>
+type HyperTraderProfile = Record<string, any>
+type HyperPositionRow = Record<string, any>
+
+function dash(value: unknown, formatter?: (value: number) => string) {
+  if (value === null || value === undefined || value === '') return '—'
+  if (typeof value === 'number') return formatter ? formatter(value) : Number(value).toFixed(2)
+  return String(value)
+}
+
+function copyText(value: string) {
+  navigator.clipboard?.writeText(value).catch(() => undefined)
+}
+
+function routeTo(path: string) {
+  window.history.pushState({}, '', path)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+}
+
+function HyperNav({ current }: { current: string }) {
+  const items = [
+    ['Overview', '/hyperliquid'],
+    ['Live Leaderboard', '/hyperliquid/live-leaderboard'],
+    ['Trader Profiles', '/hyperliquid/live-leaderboard'],
+    ['Consensus', '/hyperliquid/consensus'],
+    ['Positions', '/hyperliquid/positions'],
+    ['Execution', '/hyperliquid/execution'],
+    ['Settings', '/hyperliquid/execution'],
+  ]
+  return (
+    <nav className="hyper-top-tabs">
+      {items.map(([label, path]) => (
+        <button key={`${label}-${path}`} className={current === path ? 'active' : ''} onClick={() => routeTo(path)}>
+          {label}
+        </button>
+      ))}
+    </nav>
+  )
+}
+
+function HyperShell({ children, current, title, subtitle }: { children: ReactNode, current: string, title: string, subtitle: string }) {
+  return (
+    <main className="hyper-page">
+      <header className="hyper-header">
+        <button className="hyper-home-link" onClick={() => routeTo('/')}>Mission Control</button>
+        <div>
+          <p className="eyebrow">Hyperliquid Research Terminal</p>
+          <h1>{title}</h1>
+          <span>{subtitle}</span>
+        </div>
+      </header>
+      <HyperNav current={current} />
+      {children}
+    </main>
+  )
+}
+
+function HyperMetricCards({ cards }: { cards: Array<{ label: string, value: React.ReactNode, tone?: string }> }) {
+  return (
+    <section className="hyper-card-grid">
+      {cards.map((card) => (
+        <div className={`hyper-card ${card.tone || ''}`} key={card.label}>
+          <span>{card.label}</span>
+          <strong>{card.value}</strong>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+function HyperTable({
+  columns,
+  rows,
+  getKey,
+  onRowClick,
+}: {
+  columns: Array<{ key: string, label: string, render?: (row: any) => React.ReactNode, numeric?: boolean }>
+  rows: any[]
+  getKey: (row: any, index: number) => string
+  onRowClick?: (row: any) => void
+}) {
+  const [sortKey, setSortKey] = useState(columns[0]?.key || '')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(columns[0]?.key === 'rank' ? 'asc' : 'desc')
+  const sortedRows = useMemo(() => {
+    const list = [...rows]
+    list.sort((a, b) => {
+      const av = a?.[sortKey]
+      const bv = b?.[sortKey]
+      const an = Number(av)
+      const bn = Number(bv)
+      const result = Number.isFinite(an) && Number.isFinite(bn)
+        ? an - bn
+        : String(av ?? '').localeCompare(String(bv ?? ''))
+      return sortDir === 'asc' ? result : -result
+    })
+    return list
+  }, [rows, sortDir, sortKey])
+
+  return (
+    <div className="hyper-table-wrap">
+      <table className="hyper-table">
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <th key={column.key} className={column.numeric ? 'num' : ''}>
+                <button onClick={() => {
+                  if (sortKey === column.key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+                  else {
+                    setSortKey(column.key)
+                    setSortDir('desc')
+                  }
+                }}>
+                  {column.label}{sortKey === column.key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                </button>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sortedRows.map((row, index) => (
+            <tr key={getKey(row, index)} onClick={onRowClick ? () => onRowClick(row) : undefined} className={onRowClick ? 'clickable' : ''}>
+              {columns.map((column) => <td key={column.key} className={column.numeric ? 'num' : ''}>{column.render ? column.render(row) : dash(row[column.key])}</td>)}
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr><td colSpan={columns.length} className="empty-cell">No live data available.</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function HyperliquidResearchApp({ path }: { path: string }) {
+  if (path.startsWith('/hyperliquid/traders/')) {
+    return <HyperTraderPage address={decodeURIComponent(path.split('/').pop() || '')} path={path} />
+  }
+  if (path === '/hyperliquid/live-leaderboard') return <HyperLeaderboardPage path={path} />
+  if (path === '/hyperliquid/consensus') return <HyperConsensusPage path={path} />
+  if (path === '/hyperliquid/positions') return <HyperPositionsPage path={path} />
+  if (path === '/hyperliquid/execution') return <HyperExecutionPage path={path} />
+  return <HyperOverviewPage path="/hyperliquid" />
+}
+
+function HyperOverviewPage({ path }: { path: string }) {
+  const [summary, setSummary] = useState<HyperSummary | null>(null)
+  const [consensus, setConsensus] = useState<HyperliquidConsensusSnapshot | null>(null)
+  useEffect(() => {
+    fetchJson<HyperSummary>('/api/hyperliquid/live/summary').then(setSummary).catch(() => setSummary(null))
+    fetchJson<HyperliquidConsensusSnapshot>('/api/hyperliquid/consensus').then(setConsensus).catch(() => setConsensus(null))
+  }, [])
+  return (
+    <HyperShell current={path} title="Hyperliquid Overview" subtitle="Full-screen research and execution area for tracked Hyperliquid traders.">
+      <HyperMetricCards cards={[
+        { label: 'Tracked traders', value: summary?.trackedTraders ?? '—', tone: 'info' },
+        { label: 'Active traders', value: summary?.activeTraders ?? '—', tone: 'info' },
+        { label: 'Live open positions', value: summary?.liveOpenPositions ?? '—' },
+        { label: 'Closed live positions', value: summary?.closedLivePositions ?? '—' },
+        { label: 'Source realized PnL', value: formatUsd(summary?.sourceRealizedPnlUsd), tone: Number(summary?.sourceRealizedPnlUsd || 0) >= 0 ? 'good' : 'bad' },
+        { label: 'OKX equity', value: formatUsd(summary?.currentOkxEquity), tone: 'info' },
+        { label: 'Real execution', value: summary?.realExecutionMode ?? '—', tone: summary?.realExecutionMode === 'Enabled' ? 'warn' : 'muted' },
+        { label: 'Consensus coins', value: consensus?.coins.length ?? '—', tone: 'info' },
+      ]} />
+      <section className="hyper-panel">
+        <div className="hyper-panel-head">
+          <strong>Current strongest consensus</strong>
+          <button onClick={() => routeTo('/hyperliquid/consensus')}>Open Consensus</button>
+        </div>
+        <HyperTable
+          columns={[
+            { key: 'coin', label: 'Coin' },
+            { key: 'targetSide', label: 'Direction' },
+            { key: 'directionScore', label: 'Score', numeric: true, render: r => Number(r.directionScore || 0).toFixed(1) },
+            { key: 'qualityScore', label: 'Quality', numeric: true, render: r => Number(r.qualityScore || 0).toFixed(1) },
+            { key: 'conflictRatio', label: 'Conflict', numeric: true, render: r => `${(Number(r.conflictRatio || 0) * 100).toFixed(0)}%` },
+            { key: 'action', label: 'Action' },
+            { key: 'contributorCount', label: 'Traders', numeric: true },
+          ]}
+          rows={consensus?.coins.slice(0, 20) || []}
+          getKey={(row) => row.coin}
+        />
+      </section>
+    </HyperShell>
+  )
+}
+
+function HyperLeaderboardPage({ path }: { path: string }) {
+  const [summary, setSummary] = useState<HyperSummary | null>(null)
+  const [rows, setRows] = useState<HyperTraderRow[]>([])
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState('all')
+  const [pnlFilter, setPnlFilter] = useState('all')
+  const load = useCallback(() => {
+    fetchJson<HyperSummary>('/api/hyperliquid/live/summary').then(setSummary).catch(() => setSummary(null))
+    fetchJson<HyperTraderRow[]>('/api/hyperliquid/live/traders').then(setRows).catch(() => setRows([]))
+  }, [])
+  useEffect(() => {
+    load()
+    const timer = window.setInterval(load, 15000)
+    return () => window.clearInterval(timer)
+  }, [load])
+  const filtered = rows.filter((row) => {
+    const text = `${row.label || ''} ${row.address || ''}`.toLowerCase()
+    if (search && !text.includes(search.toLowerCase())) return false
+    if (status !== 'all' && String(row.status || '').toLowerCase() !== status) return false
+    if (pnlFilter === 'positive' && Number(row.liveRealizedPnlUsd || 0) <= 0) return false
+    if (pnlFilter === 'negative' && Number(row.liveRealizedPnlUsd || 0) >= 0) return false
+    return true
+  })
+  return (
+    <HyperShell current={path} title="Live Trader Leaderboard" subtitle="Full-width sortable table for manually reviewing tracked wallets before risking real money.">
+      <HyperMetricCards cards={[
+        { label: 'Tracked traders', value: summary?.trackedTraders ?? '—' },
+        { label: 'Active traders', value: summary?.activeTraders ?? '—' },
+        { label: 'Live open positions', value: summary?.liveOpenPositions ?? '—' },
+        { label: 'Closed live positions', value: summary?.closedLivePositions ?? '—' },
+        { label: 'Source realized PnL', value: formatUsd(summary?.sourceRealizedPnlUsd), tone: Number(summary?.sourceRealizedPnlUsd || 0) >= 0 ? 'good' : 'bad' },
+        { label: 'Pure virtual PnL', value: dash(summary?.pureVirtualPnlUsd, formatUsd), tone: 'muted' },
+        { label: 'Executable virtual PnL', value: dash(summary?.executableVirtualPnlUsd, formatUsd), tone: 'muted' },
+        { label: 'Real OKX PnL', value: dash(summary?.realOkxPnlUsd, formatUsd), tone: 'muted' },
+        { label: 'Current OKX equity', value: formatUsd(summary?.currentOkxEquity), tone: 'info' },
+        { label: 'Real execution mode', value: summary?.realExecutionMode ?? '—', tone: summary?.realExecutionMode === 'Enabled' ? 'warn' : 'muted' },
+      ]} />
+      <section className="hyper-panel">
+        <div className="hyper-toolbar">
+          <input placeholder="Search label or address" value={search} onChange={e => setSearch(e.target.value)} />
+          <select value={status} onChange={e => setStatus(e.target.value)}>
+            <option value="all">All status</option>
+            <option value="real enabled">Real enabled</option>
+            <option value="shadow">Shadow</option>
+            <option value="paused">Paused</option>
+          </select>
+          <select value={pnlFilter} onChange={e => setPnlFilter(e.target.value)}>
+            <option value="all">All PnL</option>
+            <option value="positive">Positive PnL</option>
+            <option value="negative">Negative PnL</option>
+          </select>
+          <button onClick={load}>Refresh</button>
+        </div>
+        <HyperTable
+          columns={[
+            { key: 'rank', label: 'Rank', numeric: true, render: r => Number(r.rank || 0).toLocaleString(undefined, { maximumFractionDigits: 0 }) },
+            { key: 'status', label: 'Status', render: r => <span className={`tag ${String(r.status || '').includes('Real') ? 'warn' : String(r.status || '') === 'Shadow' ? 'muted' : 'bad'}`}>{r.status}</span> },
+            { key: 'label', label: 'Label' },
+            { key: 'address', label: 'Address', render: r => <button className="copy-cell" onClick={(e) => { e.stopPropagation(); copyText(r.address) }}>{shortAddress(r.address)}</button> },
+            { key: 'liveScore', label: 'Live Score', numeric: true, render: r => dash(r.liveScore) },
+            { key: 'confidence', label: 'Confidence', numeric: true, render: r => dash(r.confidence) },
+            { key: 'historicalScore', label: 'Historical Score', numeric: true, render: r => dash(r.historicalScore) },
+            { key: 'currentAccountValue', label: 'Account Value', numeric: true, render: r => dash(r.currentAccountValue, formatUsd) },
+            { key: 'liveRealizedPnlUsd', label: 'Live Realized', numeric: true, render: r => <span className={Number(r.liveRealizedPnlUsd || 0) >= 0 ? 'pos' : 'neg'}>{dash(r.liveRealizedPnlUsd, formatUsd)}</span> },
+            { key: 'liveRealizedPnlPct', label: 'Live %', numeric: true, render: r => dash(r.liveRealizedPnlPct, v => `${v.toFixed(2)}%`) },
+            { key: 'pureVirtualPnl', label: 'Pure Virtual', numeric: true, render: r => dash(r.pureVirtualPnl, formatUsd) },
+            { key: 'executableVirtualPnl', label: 'Executable Virtual', numeric: true, render: r => dash(r.executableVirtualPnl, formatUsd) },
+            { key: 'realOkxPnl', label: 'Real OKX', numeric: true, render: r => dash(r.realOkxPnl, formatUsd) },
+            { key: 'openPositions', label: 'Open', numeric: true },
+            { key: 'closedPositions', label: 'Closed', numeric: true },
+            { key: 'wins', label: 'Wins', numeric: true, render: r => dash(r.wins) },
+            { key: 'losses', label: 'Losses', numeric: true, render: r => dash(r.losses) },
+            { key: 'winrate', label: 'Winrate', numeric: true, render: r => dash(r.winrate, v => `${v.toFixed(1)}%`) },
+            { key: 'grossProfitUsd', label: 'Gross Profit', numeric: true, render: r => dash(r.grossProfitUsd, formatUsd) },
+            { key: 'grossLossUsd', label: 'Gross Loss', numeric: true, render: r => dash(r.grossLossUsd, formatUsd) },
+            { key: 'profitFactor', label: 'PF', numeric: true, render: r => dash(r.profitFactor) },
+            { key: 'avgHoldSeconds', label: 'Avg Hold', numeric: true, render: r => dash(r.avgHoldSeconds, formatDuration) },
+            { key: 'medianHoldSeconds', label: 'Median Hold', numeric: true, render: r => dash(r.medianHoldSeconds, formatDuration) },
+            { key: 'bestTrade', label: 'Best', numeric: true, render: r => dash(r.bestTrade, formatUsd) },
+            { key: 'worstTrade', label: 'Worst', numeric: true, render: r => dash(r.worstTrade, formatUsd) },
+            { key: 'maxDrawdown', label: 'Max DD', numeric: true, render: r => dash(r.maxDrawdown) },
+            { key: 'okxCopyablePnl', label: 'OKX Copyable PnL', numeric: true, render: r => dash(r.okxCopyablePnl, formatUsd) },
+            { key: 'minOrderRejectRate', label: 'Min Reject', numeric: true, render: r => dash(r.minOrderRejectRate) },
+            { key: 'conflictRate', label: 'Conflict', numeric: true, render: r => dash(r.conflictRate) },
+            { key: 'lastSignalAt', label: 'Last Signal', render: r => r.lastSignalAt ? formatTime(r.lastSignalAt) : '—' },
+            { key: 'topCoins', label: 'Top Coins' },
+            { key: 'actions', label: 'Actions', render: r => <button onClick={(e) => { e.stopPropagation(); routeTo(`/hyperliquid/traders/${r.address}`) }}>View</button> },
+          ]}
+          rows={filtered}
+          getKey={(row) => row.address}
+          onRowClick={(row) => routeTo(`/hyperliquid/traders/${row.address}`)}
+        />
+      </section>
+    </HyperShell>
+  )
+}
+
+function HyperTraderPage({ address, path }: { address: string, path: string }) {
+  const [profile, setProfile] = useState<HyperTraderProfile | null>(null)
+  const [active, setActive] = useState<HyperPositionRow[]>([])
+  const [closed, setClosed] = useState<HyperPositionRow[]>([])
+  const [coins, setCoins] = useState<any[]>([])
+  const [alloc, setAlloc] = useState<any[]>([])
+  const [tab, setTab] = useState('overview')
+  const load = useCallback(() => {
+    fetchJson<HyperTraderProfile>(`/api/hyperliquid/live/traders/${address}`).then(setProfile).catch(() => setProfile(null))
+    fetchJson<HyperPositionRow[]>(`/api/hyperliquid/live/traders/${address}/active-positions`).then(setActive).catch(() => setActive([]))
+    fetchJson<HyperPositionRow[]>(`/api/hyperliquid/live/traders/${address}/closed-positions`).then(setClosed).catch(() => setClosed([]))
+    fetchJson<any[]>(`/api/hyperliquid/live/traders/${address}/coin-performance`).then(setCoins).catch(() => setCoins([]))
+    fetchJson<any[]>(`/api/hyperliquid/live/traders/${address}/allocation-profile`).then(setAlloc).catch(() => setAlloc([]))
+  }, [address])
+  useEffect(() => { load() }, [load])
+  const metrics = profile?.metrics || {}
+  return (
+    <HyperShell current={path} title={profile?.label || shortAddress(address)} subtitle="Trader profile and copyability research terminal.">
+      <section className="hyper-profile-head">
+        <div>
+          <span>Address</span>
+          <strong>{address}</strong>
+          <button onClick={() => copyText(address)}>Copy</button>
+        </div>
+        <div><span>Status</span><strong>{profile?.status || '—'}</strong></div>
+        <div><span>Historical</span><strong>{dash(profile?.historicalScore)}</strong></div>
+        <div><span>Live</span><strong>{dash(profile?.liveScore)}</strong></div>
+        <div><span>Confidence</span><strong>{dash(profile?.confidence)}</strong></div>
+        <div><span>Account</span><strong>{dash(profile?.currentAccountValue, formatUsd)}</strong></div>
+        <div><span>Withdrawable</span><strong>{dash(profile?.currentWithdrawable, formatUsd)}</strong></div>
+        <div><span>Margin Used</span><strong>{dash(profile?.currentMarginUsed, formatUsd)}</strong></div>
+        <div><span>Total Notional</span><strong>{dash(profile?.totalPositionNotional, formatUsd)}</strong></div>
+        <div><span>Active</span><strong>{profile?.activePositionCount ?? '—'}</strong></div>
+        <div><span>Last Seen</span><strong>{profile?.lastSeen ? formatTime(profile.lastSeen) : '—'}</strong></div>
+        <div><span>Tracking Start</span><strong>{profile?.trackingStartDate ? formatTime(profile.trackingStartDate) : '—'}</strong></div>
+      </section>
+      <HyperMetricCards cards={[
+        { label: '30D realized PnL', value: dash(metrics.realized30dPnlUsd, formatUsd), tone: Number(metrics.realized30dPnlUsd || 0) >= 0 ? 'good' : 'bad' },
+        { label: '30D realized %', value: dash(metrics.realized30dPnlPct, v => `${v.toFixed(2)}%`) },
+        { label: 'Live realized PnL', value: dash(metrics.liveRealizedPnlUsd, formatUsd) },
+        { label: 'Live realized %', value: dash(metrics.liveRealizedPnlPct, v => `${v.toFixed(2)}%`) },
+        { label: 'Closed positions', value: metrics.totalClosedPositions ?? '—' },
+        { label: 'Winning', value: metrics.winningPositions ?? '—', tone: 'good' },
+        { label: 'Losing', value: metrics.losingPositions ?? '—', tone: 'bad' },
+        { label: 'Winrate', value: dash(metrics.winrate, v => `${v.toFixed(1)}%`) },
+        { label: 'Gross profit', value: dash(metrics.grossProfitUsd, formatUsd), tone: 'good' },
+        { label: 'Gross loss', value: dash(metrics.grossLossUsd, formatUsd), tone: 'bad' },
+        { label: 'Profit factor', value: dash(metrics.profitFactor) },
+        { label: 'Avg hold', value: dash(metrics.averageHoldSeconds, formatDuration) },
+        { label: 'Median hold', value: dash(metrics.medianHoldSeconds, formatDuration) },
+        { label: 'Best trade', value: dash(metrics.bestTrade, formatUsd), tone: 'good' },
+        { label: 'Worst trade', value: dash(metrics.worstTrade, formatUsd), tone: 'bad' },
+        { label: 'Max drawdown', value: dash(metrics.maxDrawdown) },
+        { label: 'OKX-copyable PnL', value: dash(metrics.okxCopyablePnl, formatUsd) },
+        { label: 'Pure virtual PnL', value: dash(metrics.pureVirtualCopyPnl, formatUsd) },
+        { label: 'Executable virtual PnL', value: dash(metrics.executableVirtualCopyPnl, formatUsd) },
+        { label: 'Real OKX copied PnL', value: dash(metrics.realOkxCopiedPnl, formatUsd) },
+        { label: 'Min order reject', value: dash(metrics.minOrderRejectRate) },
+        { label: 'Skipped signals', value: metrics.skippedSignalCount ?? '—' },
+      ]} />
+      <nav className="hyper-sub-tabs">
+        {['overview', 'active positions', 'closed positions', 'coin performance', 'allocation profile', 'copy simulation', 'okx orders', 'raw events'].map(item => (
+          <button key={item} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{item}</button>
+        ))}
+      </nav>
+      {tab === 'overview' && <TraderOverview active={active} closed={closed} coins={coins} />}
+      {tab === 'active positions' && <PositionTable rows={active} active />}
+      {tab === 'closed positions' && <PositionTable rows={closed} />}
+      {tab === 'coin performance' && <CoinPerformanceTable rows={coins} />}
+      {tab === 'allocation profile' && <AllocationTable rows={alloc} />}
+      {['copy simulation', 'okx orders', 'raw events'].includes(tab) && <section className="hyper-panel"><p className="empty-cell">No rows available from the current DB for this tab.</p></section>}
+    </HyperShell>
+  )
+}
+
+function TraderOverview({ active, coins }: { active: any[], closed: any[], coins: any[] }) {
+  return (
+    <section className="hyper-two-col">
+      <div className="hyper-panel">
+        <div className="hyper-panel-head"><strong>Largest active positions</strong></div>
+        <PositionTable rows={active.slice(0, 10)} active compact />
+      </div>
+      <div className="hyper-panel">
+        <div className="hyper-panel-head"><strong>Best coin profiles</strong></div>
+        <CoinPerformanceTable rows={coins.slice(0, 10)} compact />
+      </div>
+    </section>
+  )
+}
+
+function PositionTable({ rows, active, compact }: { rows: any[], active?: boolean, compact?: boolean }) {
+  return (
+    <HyperTable
+      columns={[
+        { key: 'coin', label: 'Coin' },
+        { key: 'side', label: 'Side', render: r => <span className={String(r.side).toUpperCase() === 'LONG' ? 'pos' : 'neg'}>{r.side}</span> },
+        { key: 'status', label: 'Status' },
+        { key: 'openedAt', label: 'Opened', render: r => formatTime(r.openedAt) },
+        ...(active ? [] : [{ key: 'closedAt', label: 'Closed', render: (r: any) => r.closedAt ? formatTime(r.closedAt) : '—' }]),
+        { key: 'entryPrice', label: 'Entry', numeric: true, render: r => dash(r.entryPrice) },
+        { key: 'exitPrice', label: 'Exit/Mark', numeric: true, render: r => dash(active ? r.currentMarkPrice : r.exitPrice) },
+        { key: 'currentSize', label: 'Size', numeric: true, render: r => dash(r.currentSize || r.maxSize) },
+        { key: 'currentNotionalUsd', label: 'Notional', numeric: true, render: r => dash(r.currentNotionalUsd || r.maxNotionalUsd, formatUsd) },
+        { key: 'sourceAccountValueAtOpen', label: 'Account @ Open', numeric: true, render: r => dash(r.sourceAccountValueAtOpen, formatUsd) },
+        { key: 'allocPctOfAccount', label: 'Alloc %', numeric: true, render: r => dash(r.allocPctOfAccount, v => `${v.toFixed(2)}%`) },
+        ...(compact ? [] : [
+          { key: 'marginMode', label: 'Margin' },
+          { key: 'leverage', label: 'Lev', render: (r: any) => dash(r.leverage) },
+        ]),
+        { key: 'unrealizedPnlUsd', label: active ? 'uPnL' : 'Realized', numeric: true, render: r => <span className={Number((active ? r.unrealizedPnlUsd : r.realizedPnlUsd) || 0) >= 0 ? 'pos' : 'neg'}>{dash(active ? r.unrealizedPnlUsd : r.realizedPnlUsd, formatUsd)}</span> },
+        { key: 'pnlPctAccount', label: 'PnL % Account', numeric: true, render: r => dash(r.pnlPctAccount, v => `${v.toFixed(3)}%`) },
+        { key: 'fees', label: 'Fees', numeric: true, render: r => dash(r.fees, formatUsd) },
+        { key: 'isOkxTradable', label: 'OKX', render: r => r.isOkxTradable ? 'yes' : 'no' },
+        { key: 'copiedReal', label: 'Copied', render: r => r.copiedReal ? 'yes' : 'no' },
+        { key: 'copyStatus', label: 'Copy status' },
+        { key: 'skipReason', label: 'Skip reason' },
+      ]}
+      rows={rows}
+      getKey={(row, index) => `${row.id || index}`}
+    />
+  )
+}
+
+function CoinPerformanceTable({ rows, compact }: { rows: any[], compact?: boolean }) {
+  return (
+    <HyperTable
+      columns={[
+        { key: 'coin', label: 'Coin' },
+        { key: 'closedPositions', label: 'Closed', numeric: true },
+        { key: 'winningPositions', label: 'Wins', numeric: true },
+        { key: 'losingPositions', label: 'Losses', numeric: true },
+        { key: 'winRate', label: 'Winrate', numeric: true, render: r => dash(r.winRate, v => `${v.toFixed(1)}%`) },
+        { key: 'netPnlUsd', label: 'Net PnL', numeric: true, render: r => <span className={Number(r.netPnlUsd || 0) >= 0 ? 'pos' : 'neg'}>{dash(r.netPnlUsd, formatUsd)}</span> },
+        ...(compact ? [] : [
+          { key: 'grossProfitUsd', label: 'Gross Profit', numeric: true, render: (r: any) => dash(r.grossProfitUsd, formatUsd) },
+          { key: 'grossLossUsd', label: 'Gross Loss', numeric: true, render: (r: any) => dash(r.grossLossUsd, formatUsd) },
+        ]),
+        { key: 'profitFactor', label: 'PF', numeric: true, render: r => dash(r.profitFactor) },
+        { key: 'avgAllocPct', label: 'Avg Alloc', numeric: true, render: r => dash(r.avgAllocPct, v => `${v.toFixed(2)}%`) },
+        { key: 'medianAllocPct', label: 'Median Alloc', numeric: true, render: r => dash(r.medianAllocPct, v => `${v.toFixed(2)}%`) },
+        { key: 'p75AllocPct', label: 'P75', numeric: true, render: r => dash(r.p75AllocPct, v => `${v.toFixed(2)}%`) },
+        { key: 'p90AllocPct', label: 'P90', numeric: true, render: r => dash(r.p90AllocPct, v => `${v.toFixed(2)}%`) },
+        { key: 'maxAllocPct', label: 'Max Alloc', numeric: true, render: r => dash(r.maxAllocPct, v => `${v.toFixed(2)}%`) },
+        { key: 'avgHoldSeconds', label: 'Avg Hold', numeric: true, render: r => dash(r.avgHoldSeconds, formatDuration) },
+        { key: 'bestTradePnlUsd', label: 'Best', numeric: true, render: r => dash(r.bestTradePnlUsd, formatUsd) },
+        { key: 'worstTradePnlUsd', label: 'Worst', numeric: true, render: r => dash(r.worstTradePnlUsd, formatUsd) },
+        { key: 'coinSkillScore', label: 'Skill', numeric: true, render: r => dash(r.coinSkillScore) },
+        { key: 'sampleConfidence', label: 'Sample Conf', numeric: true, render: r => dash(r.sampleConfidence) },
+      ]}
+      rows={rows}
+      getKey={(row) => row.coin}
+    />
+  )
+}
+
+function AllocationTable({ rows }: { rows: any[] }) {
+  return (
+    <HyperTable
+      columns={[
+        { key: 'coin', label: 'Coin' },
+        { key: 'minAllocPct', label: 'Min', numeric: true, render: r => dash(r.minAllocPct, v => `${v.toFixed(2)}%`) },
+        { key: 'p25AllocPct', label: 'P25', numeric: true, render: r => dash(r.p25AllocPct, v => `${v.toFixed(2)}%`) },
+        { key: 'medianAllocPct', label: 'Median', numeric: true, render: r => dash(r.medianAllocPct, v => `${v.toFixed(2)}%`) },
+        { key: 'avgAllocPct', label: 'Average', numeric: true, render: r => dash(r.avgAllocPct, v => `${v.toFixed(2)}%`) },
+        { key: 'p75AllocPct', label: 'P75', numeric: true, render: r => dash(r.p75AllocPct, v => `${v.toFixed(2)}%`) },
+        { key: 'p90AllocPct', label: 'P90', numeric: true, render: r => dash(r.p90AllocPct, v => `${v.toFixed(2)}%`) },
+        { key: 'maxAllocPct', label: 'Max', numeric: true, render: r => dash(r.maxAllocPct, v => `${v.toFixed(2)}%`) },
+        { key: 'currentAllocPct', label: 'Current', numeric: true, render: r => dash(r.currentAllocPct, v => `${v.toFixed(2)}%`) },
+        { key: 'currentVsMedian', label: 'Current / Median', numeric: true, render: r => dash(r.currentVsMedian, v => `${v.toFixed(2)}x`) },
+        { key: 'currentVsP90', label: 'Current / P90', numeric: true, render: r => dash(r.currentVsP90, v => `${v.toFixed(2)}x`) },
+        { key: 'allocationConviction', label: 'Conviction', numeric: true, render: r => dash(r.allocationConviction) },
+      ]}
+      rows={rows}
+      getKey={(row) => row.coin}
+    />
+  )
+}
+
+function HyperConsensusPage({ path }: { path: string }) {
+  const [data, setData] = useState<HyperliquidConsensusSnapshot | null>(null)
+  const [selectedCoin, setSelectedCoin] = useState('BTC')
+  const [contributors, setContributors] = useState<any[]>([])
+  const load = useCallback(() => {
+    fetchJson<HyperliquidConsensusSnapshot>('/api/hyperliquid/consensus').then((snapshot) => {
+      setData(snapshot)
+      if (!snapshot.coins.some(x => x.coin === selectedCoin) && snapshot.coins[0]) setSelectedCoin(snapshot.coins[0].coin)
+    }).catch(() => setData(null))
+  }, [selectedCoin])
+  useEffect(() => {
+    load()
+    const timer = window.setInterval(load, 15000)
+    return () => window.clearInterval(timer)
+  }, [load])
+  useEffect(() => {
+    fetchJson<any[]>(`/api/hyperliquid/consensus/${selectedCoin}/contributors`).then(setContributors).catch(() => setContributors([]))
+  }, [selectedCoin])
+  const score = (coin: string) => data?.coins.find(x => x.coin === coin)?.directionScore
+  return (
+    <HyperShell current={path} title="Smart Consensus Engine" subtitle="Coin-level directional bias generated from tracked trader exposure and historical coin skill.">
+      <HyperMetricCards cards={[
+        { label: 'BTC Score', value: dash(score('BTC')) },
+        { label: 'ETH Score', value: dash(score('ETH')) },
+        { label: 'SOL Score', value: dash(score('SOL')) },
+        { label: 'HYPE Score', value: dash(score('HYPE')) },
+        { label: 'ALT Score', value: dash(data?.coins.filter(x => !['BTC','ETH','SOL','HYPE'].includes(x.coin)).reduce((a, b) => a + b.directionScore, 0)) },
+        { label: 'Risk-On Score', value: dash(data?.coins.filter(x => x.targetSide === 'LONG').reduce((a, b) => a + Math.max(0, b.directionScore), 0)) },
+        { label: 'BTC vs ALT', value: dash((score('BTC') || 0) - (score('ETH') || 0)) },
+        { label: 'Regime', value: data?.coins[0]?.targetSide === 'LONG' ? 'Risk-on / long-led' : 'Defensive / mixed', tone: 'info' },
+      ]} />
+      <section className="hyper-panel">
+        <HyperTable
+          columns={[
+            { key: 'coin', label: 'Coin' },
+            { key: 'targetSide', label: 'Direction' },
+            { key: 'directionScore', label: 'Direction Score', numeric: true, render: r => dash(r.directionScore) },
+            { key: 'qualityScore', label: 'Quality', numeric: true, render: r => dash(r.qualityScore) },
+            { key: 'longPower', label: 'Long Power', numeric: true, render: r => dash(r.longPower) },
+            { key: 'shortPower', label: 'Short Power', numeric: true, render: r => dash(r.shortPower) },
+            { key: 'conflictRatio', label: 'Conflict %', numeric: true, render: r => dash(r.conflictRatio, v => `${(v * 100).toFixed(0)}%`) },
+            { key: 'participation', label: 'Participation %', numeric: true, render: r => dash(r.participation, v => `${(v * 100).toFixed(0)}%`) },
+            { key: 'contributorCount', label: 'Active Traders', numeric: true },
+            { key: 'targetNotionalUsd', label: 'Target OKX Notional', numeric: true, render: r => dash(r.targetNotionalUsd, formatUsd) },
+            { key: 'currentOkxNotional', label: 'Current OKX Notional', render: () => '—' },
+            { key: 'delta', label: 'Delta', render: () => '—' },
+            { key: 'action', label: 'Action' },
+            { key: 'skipReason', label: 'Skip reason' },
+          ]}
+          rows={data?.coins || []}
+          getKey={(row) => row.coin}
+          onRowClick={(row) => setSelectedCoin(row.coin)}
+        />
+      </section>
+      <section className="hyper-panel">
+        <div className="hyper-panel-head"><strong>Top Contributors: {selectedCoin}</strong></div>
+        <HyperTable
+          columns={[
+            { key: 'traderAddress', label: 'Trader', render: r => <button onClick={() => routeTo(`/hyperliquid/traders/${r.traderAddress}`)}>{shortAddress(r.traderAddress)}</button> },
+            { key: 'side', label: 'Side' },
+            { key: 'currentNotionalUsd', label: 'Current Notional', numeric: true, render: r => dash(r.currentNotionalUsd, formatUsd) },
+            { key: 'currentAccountValueUsd', label: 'Account Value', numeric: true, render: r => dash(r.currentAccountValueUsd, formatUsd) },
+            { key: 'currentAllocPct', label: 'Alloc %', numeric: true, render: r => dash(r.currentAllocPct, v => `${v.toFixed(2)}%`) },
+            { key: 'historicalMedianAllocPct', label: 'Historical Median', render: () => '—' },
+            { key: 'historicalP90AllocPct', label: 'Historical P90', render: () => '—' },
+            { key: 'allocationConviction', label: 'Conviction', numeric: true, render: r => dash(r.allocationConviction) },
+            { key: 'coinSkillScore', label: 'Coin Skill', numeric: true, render: r => dash(r.coinSkillScore) },
+            { key: 'weightedSignal', label: 'Weighted Signal', numeric: true, render: r => dash(r.weightedSignal) },
+            { key: 'unrealizedPnlUsd', label: 'uPnL', numeric: true, render: r => dash(r.unrealizedPnlUsd, formatUsd) },
+          ]}
+          rows={contributors}
+          getKey={(row, index) => `${row.traderAddress}-${row.coin}-${index}`}
+        />
+      </section>
+    </HyperShell>
+  )
+}
+
+function HyperPositionsPage({ path }: { path: string }) {
+  const [active, setActive] = useState<any[]>([])
+  const [closed, setClosed] = useState<any[]>([])
+  useEffect(() => {
+    fetchJson<any[]>('/api/hyperliquid/positions/active').then(setActive).catch(() => setActive([]))
+    fetchJson<any[]>('/api/hyperliquid/positions/closed').then(setClosed).catch(() => setClosed([]))
+  }, [])
+  return (
+    <HyperShell current={path} title="Position Monitor" subtitle="Full-screen monitor for source positions, baseline positions, closed positions and copy state.">
+      <section className="hyper-panel"><div className="hyper-panel-head"><strong>Live active source positions</strong></div><PositionTable rows={active.filter(x => x.openedFromTracking)} active /></section>
+      <section className="hyper-panel"><div className="hyper-panel-head"><strong>Baseline positions already open before tracking</strong></div><PositionTable rows={active.filter(x => !x.openedFromTracking)} active /></section>
+      <section className="hyper-panel"><div className="hyper-panel-head"><strong>Recently closed source positions</strong></div><PositionTable rows={closed} /></section>
+      <section className="hyper-panel"><div className="hyper-panel-head"><strong>Pure virtual copy positions</strong></div><p className="empty-cell">No virtual ledger rows available yet.</p></section>
+      <section className="hyper-panel"><div className="hyper-panel-head"><strong>Executable virtual copy positions</strong></div><p className="empty-cell">No executable virtual ledger rows available yet.</p></section>
+      <section className="hyper-panel"><div className="hyper-panel-head"><strong>Real OKX positions</strong></div><p className="empty-cell">Open the Execution page for live OKX positions.</p></section>
+    </HyperShell>
+  )
+}
+
+function HyperExecutionPage({ path }: { path: string }) {
+  const [summary, setSummary] = useState<any>(null)
+  const [orders, setOrders] = useState<any[]>([])
+  const [positions, setPositions] = useState<any[]>([])
+  const load = useCallback(() => {
+    fetchJson<any>('/api/hyperliquid/execution/summary').then(setSummary).catch(() => setSummary(null))
+    fetchJson<any[]>('/api/hyperliquid/execution/orders').then(setOrders).catch(() => setOrders([]))
+    fetchJson<any[]>('/api/hyperliquid/execution/positions').then(setPositions).catch(() => setPositions([]))
+  }, [])
+  useEffect(() => { load() }, [load])
+  const confirmAction = async (message: string, url: string) => {
+    if (!window.confirm(message)) return
+    await fetchJson(url, { method: 'POST' })
+    load()
+  }
+  return (
+    <HyperShell current={path} title="OKX Execution & Ledger" subtitle="Real execution, shadow-only state, target exposure and audit rows.">
+      <HyperMetricCards cards={[
+        { label: 'Current OKX equity', value: dash(summary?.okxEquity, formatUsd), tone: 'info' },
+        { label: 'Real execution mode', value: summary?.realExecutionMode ?? '—', tone: summary?.realExecutionMode === 'Enabled' ? 'warn' : 'muted' },
+        { label: 'Real execution traders', value: summary?.realExecutionTraders ?? '—' },
+        { label: 'Open OKX positions', value: positions.length },
+      ]} />
+      <section className="hyper-danger-row">
+        <button onClick={() => confirmAction('Disable real execution for every trader?', '/api/hyperliquid/execution/disable-real')}>Disable real execution</button>
+        <button onClick={() => confirmAction('Switch all traders to shadow-only mode?', '/api/hyperliquid/execution/enable-shadow-only')}>Enable shadow-only</button>
+        <button onClick={() => confirmAction('Pause all is not yet wired separately. Disable real execution instead?', '/api/hyperliquid/execution/disable-real')}>Pause all</button>
+      </section>
+      <section className="hyper-panel">
+        <div className="hyper-panel-head"><strong>Target exposure per coin</strong></div>
+        <HyperTable
+          columns={[
+            { key: 'coin', label: 'Coin' },
+            { key: 'targetSide', label: 'Target Side' },
+            { key: 'targetNotionalUsd', label: 'Target Notional', numeric: true, render: r => dash(r.targetNotionalUsd, formatUsd) },
+            { key: 'action', label: 'Action' },
+            { key: 'skipReason', label: 'Skip reason' },
+          ]}
+          rows={summary?.targetExposurePerCoin || []}
+          getKey={(row) => row.coin}
+        />
+      </section>
+      <section className="hyper-panel"><div className="hyper-panel-head"><strong>Open OKX positions</strong></div><pre>{JSON.stringify(positions, null, 2)}</pre></section>
+      <section className="hyper-panel"><div className="hyper-panel-head"><strong>Recent copy / order events</strong></div><HyperTable columns={[
+        { key: 'createdAt', label: 'Time', render: r => formatTime(r.createdAt) },
+        { key: 'traderAddress', label: 'Trader', render: r => shortAddress(r.traderAddress) },
+        { key: 'symbol', label: 'Coin' },
+        { key: 'side', label: 'Side' },
+        { key: 'eventType', label: 'Type' },
+        { key: 'message', label: 'Message' },
+        { key: 'isSuccess', label: 'Success', render: r => r.isSuccess ? 'yes' : 'no' },
+      ]} rows={orders} getKey={(row, i) => `${row.id || i}`} /></section>
+    </HyperShell>
+  )
+}
+
 function App() {
+  const [currentPath, setCurrentPath] = useState(window.location.pathname)
   const graphRef = useRef<any>(null)
   const aiCoreVisualRef = useRef<THREE.Group | null>(null)
   const panelResizeRef = useRef({ startX: 0, startWidth: 420 })
@@ -574,16 +1093,6 @@ function App() {
   const [discoveryRuns, setDiscoveryRuns] = useState<TraderDiscoveryRun[]>([])
   const [discoveryCandidates, setDiscoveryCandidates] = useState<TraderDiscoveryCandidate[]>([])
   const [activeDiscoveryRun, setActiveDiscoveryRun] = useState<TraderDiscoveryRun | null>(null)
-  const [hyperRuns, setHyperRuns] = useState<HyperliquidRun[]>([])
-  const [activeHyperRun, setActiveHyperRun] = useState<HyperliquidRun | null>(null)
-  const [hyperTraders, setHyperTraders] = useState<HyperliquidTraderSummary[]>([])
-  const [hyperScoreboard, setHyperScoreboard] = useState<HyperliquidScoreRow[]>([])
-  const [selectedHyperScore, setSelectedHyperScore] = useState<HyperliquidScoreRow | null>(null)
-  const [selectedHyperTrader, setSelectedHyperTrader] = useState<HyperliquidTraderSummary | null>(null)
-  const [hyperTraderDetail, setHyperTraderDetail] = useState<HyperliquidTraderDetail | null>(null)
-  const [hyperLive, setHyperLive] = useState<HyperliquidLiveLeaderboard | null>(null)
-  const [hyperConsensus, setHyperConsensus] = useState<HyperliquidConsensusSnapshot | null>(null)
-  const [isConsensusImporting, setIsConsensusImporting] = useState(false)
   const [isDiscoveryRunning, setIsDiscoveryRunning] = useState(false)
   const [isTraderScanRunning, setIsTraderScanRunning] = useState(false)
   const [selected, setSelected] = useState<GraphNode | null>(null)
@@ -598,6 +1107,12 @@ function App() {
     const stored = Number(window.localStorage.getItem('mission-control-panel-width'))
     return Number.isFinite(stored) && stored >= 340 ? stored : 420
   })
+
+  useEffect(() => {
+    const updatePath = () => setCurrentPath(window.location.pathname)
+    window.addEventListener('popstate', updatePath)
+    return () => window.removeEventListener('popstate', updatePath)
+  }, [])
   const [isPanelResizing, setIsPanelResizing] = useState(false)
   const [traderForm, setTraderForm] = useState({
     startUtc: '',
@@ -752,132 +1267,11 @@ function App() {
     }
   }, [])
 
-  const loadHyperRuns = useCallback(async () => {
-    try {
-      const runs = await fetchJson<HyperliquidRun[]>('/api/hyperliquid-reports/runs')
-      setHyperRuns(runs)
-      if (!activeHyperRun && runs.length > 0) {
-        setActiveHyperRun(runs[0])
-        const [traders, scoreboard] = await Promise.all([
-          fetchJson<HyperliquidTraderSummary[]>(`/api/hyperliquid-reports/runs/${runs[0].id}/traders`),
-          fetchJson<HyperliquidScoreRow[]>(`/api/hyperliquid-reports/runs/${runs[0].id}/historical-scoreboard`).catch(() => []),
-        ])
-        setHyperTraders(traders)
-        setHyperScoreboard(scoreboard)
-        setSelectedHyperScore(scoreboard[0] || null)
-        setSelectedHyperTrader(scoreboard[0] ? null : traders[0] || null)
-        const firstAddress = scoreboard[0]?.address || traders[0]?.address
-        if (firstAddress) {
-          const detail = await fetchJson<HyperliquidTraderDetail>(`/api/hyperliquid-reports/runs/${runs[0].id}/traders/${firstAddress}`)
-          setHyperTraderDetail(detail)
-        }
-      }
-    } catch (error) {
-      setAlert(error instanceof Error ? error.message : 'Hyperliquid reports unavailable')
-    }
-  }, [activeHyperRun])
-
-  const loadHyperRunTraders = async (run: HyperliquidRun) => {
-    setActiveHyperRun(run)
-    setHyperTraderDetail(null)
-    setSelectedHyperTrader(null)
-    setSelectedHyperScore(null)
-    const [traders, scoreboard] = await Promise.all([
-      fetchJson<HyperliquidTraderSummary[]>(`/api/hyperliquid-reports/runs/${run.id}/traders`),
-      fetchJson<HyperliquidScoreRow[]>(`/api/hyperliquid-reports/runs/${run.id}/historical-scoreboard`).catch(() => []),
-    ])
-    setHyperTraders(traders)
-    setHyperScoreboard(scoreboard)
-    setSelectedHyperScore(scoreboard[0] || null)
-    setSelectedHyperTrader(scoreboard[0] ? null : traders[0] || null)
-    const firstAddress = scoreboard[0]?.address || traders[0]?.address
-    if (firstAddress) {
-      setHyperTraderDetail(await fetchJson<HyperliquidTraderDetail>(`/api/hyperliquid-reports/runs/${run.id}/traders/${firstAddress}`))
-    }
-  }
-
-  const loadHyperTraderDetail = async (trader: HyperliquidTraderSummary) => {
-    if (!activeHyperRun || !trader.address) return
-    setSelectedHyperTrader(trader)
-    setSelectedHyperScore(null)
-    setHyperTraderDetail(await fetchJson<HyperliquidTraderDetail>(`/api/hyperliquid-reports/runs/${activeHyperRun.id}/traders/${trader.address}`))
-  }
-
-  const loadHyperScoreDetail = async (row: HyperliquidScoreRow) => {
-    if (!activeHyperRun || !row.address) return
-    setSelectedHyperScore(row)
-    setSelectedHyperTrader(null)
-    setHyperTraderDetail(await fetchJson<HyperliquidTraderDetail>(`/api/hyperliquid-reports/runs/${activeHyperRun.id}/traders/${row.address}`))
-  }
-
-  const loadHyperLiveLeaderboard = useCallback(async () => {
-    try {
-      setHyperLive(await fetchJson<HyperliquidLiveLeaderboard>('/api/hyperliquid-copy/live-leaderboard'))
-    } catch (error) {
-      setAlert(error instanceof Error ? error.message : 'Hyperliquid live leaderboard unavailable')
-    }
-  }, [])
-
-  const loadHyperConsensus = useCallback(async () => {
-    try {
-      setHyperConsensus(await fetchJson<HyperliquidConsensusSnapshot>('/api/hyperliquid-consensus/snapshot'))
-    } catch (error) {
-      setAlert(error instanceof Error ? error.message : 'Hyperliquid consensus unavailable')
-    }
-  }, [])
-
-  const refreshHyperConsensus = async () => {
-    setHyperConsensus(await fetchJson<HyperliquidConsensusSnapshot>('/api/hyperliquid-consensus/refresh', {
-      method: 'POST',
-    }))
-  }
-
-  const importHyperConsensusWatchlist = async () => {
-    if (!activeHyperRun) return
-    setIsConsensusImporting(true)
-    try {
-      await fetchJson('/api/hyperliquid-consensus/import-watchlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          runId: activeHyperRun.id,
-          take: 40,
-          syncTraders: true,
-          rebuildProfiles: true,
-          refreshConsensus: true,
-          preserveRealExecution: true,
-        }),
-      })
-      await Promise.all([loadHyperLiveLeaderboard(), loadHyperConsensus()])
-      setAlert('')
-    } catch (error) {
-      setAlert(error instanceof Error ? error.message : 'Consensus import failed')
-    } finally {
-      setIsConsensusImporting(false)
-    }
-  }
-
   useEffect(() => {
     loadMissionState()
     const timer = window.setInterval(loadMissionState, 30000)
     return () => window.clearInterval(timer)
   }, [loadMissionState])
-
-  useEffect(() => {
-    loadHyperRuns()
-  }, [])
-
-  useEffect(() => {
-    loadHyperLiveLeaderboard()
-    const timer = window.setInterval(loadHyperLiveLeaderboard, 15000)
-    return () => window.clearInterval(timer)
-  }, [loadHyperLiveLeaderboard])
-
-  useEffect(() => {
-    loadHyperConsensus()
-    const timer = window.setInterval(loadHyperConsensus, 15000)
-    return () => window.clearInterval(timer)
-  }, [loadHyperConsensus])
 
   useEffect(() => {
     const connection = new HubConnectionBuilder()
@@ -1340,6 +1734,10 @@ function App() {
 
   const selectedPayload = parsePayload(selected?.event)
 
+  if (currentPath.startsWith('/hyperliquid')) {
+    return <HyperliquidResearchApp path={currentPath} />
+  }
+
   return (
     <main
       className={`mission-shell${isPanelResizing ? ' panel-resizing' : ''}`}
@@ -1352,6 +1750,7 @@ function App() {
             <h1>Living AI Wallet Universe</h1>
           </div>
           <div className="status-cluster">
+            <button className="status-pill hyper-link-button" onClick={() => routeTo('/hyperliquid/live-leaderboard')}>Hyperliquid</button>
             <span className={`status-pill ${connectionState}`}>{connectionState}</span>
             <span className="status-pill"><ShieldCheck size={15} /> auth</span>
             <button className="icon-button" onClick={loadMissionState} aria-label="Refresh mission state"><RefreshCw size={17} /></button>
@@ -1477,7 +1876,7 @@ function App() {
           <button className={activeTab === 'events' ? 'active' : ''} onClick={() => setActiveTab('events')}>Events</button>
           <button className={activeTab === 'wallets' ? 'active' : ''} onClick={() => setActiveTab('wallets')}>Wallets</button>
           <button className={activeTab === 'insider' ? 'active' : ''} onClick={() => setActiveTab('insider')}>Trader Finder</button>
-          <button className={activeTab === 'hyperliquid' ? 'active' : ''} onClick={() => setActiveTab('hyperliquid')}>Hyperliquid</button>
+          <button onClick={() => routeTo('/hyperliquid/live-leaderboard')}>Hyperliquid</button>
           <button className={activeTab === 'chat' ? 'active' : ''} onClick={() => setActiveTab('chat')}>Chat</button>
         </nav>
 
@@ -1693,293 +2092,6 @@ function App() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {activeTab === 'hyperliquid' && (
-            <div className="hyperliquid-lab">
-              <div className="section-heading">
-                <strong>Hyperliquid profiles</strong>
-                <span>Review active leaderboard traders by current positions, reconstructed closed positions, and live OKX-perpetual PnL.</span>
-              </div>
-              <button className="primary-action" onClick={loadHyperRuns}>
-                <RefreshCw size={16} /> Refresh reports
-              </button>
-
-              <div className="section-heading">
-                <strong>Smart Consensus</strong>
-                <span>
-                  {hyperConsensus ? `Updated ${formatTime(hyperConsensus.checkedAt)}` : 'No consensus snapshot yet'} · aggregates the 40-watchlist current exposure into coin-level bias.
-                </span>
-              </div>
-              <div className="action-row">
-                <button className="primary-action" onClick={importHyperConsensusWatchlist} disabled={isConsensusImporting || !activeHyperRun}>
-                  <Database size={16} /> {isConsensusImporting ? 'Importing watchlist...' : 'Import top 40 + score'}
-                </button>
-                <button className="primary-action secondary-action" onClick={refreshHyperConsensus}>
-                  <RefreshCw size={16} /> Refresh consensus
-                </button>
-              </div>
-              <div className="consensus-list">
-                {hyperConsensus?.coins.slice(0, 20).map((coin) => (
-                  <div className="consensus-row" key={`consensus-${coin.id}`}>
-                    <div>
-                      <strong>{coin.coin} {coin.targetSide}</strong>
-                      <span>{coin.action}{coin.skipReason ? ` · ${coin.skipReason}` : ''}</span>
-                    </div>
-                    <div>
-                      <strong>{coin.directionScore.toFixed(1)}</strong>
-                      <span>direction</span>
-                    </div>
-                    <div>
-                      <strong>{coin.qualityScore.toFixed(1)}</strong>
-                      <span>quality</span>
-                    </div>
-                    <div>
-                      <strong>{(coin.conflictRatio * 100).toFixed(0)}%</strong>
-                      <span>conflict</span>
-                    </div>
-                    <div>
-                      <strong>{coin.contributorCount}</strong>
-                      <span>traders</span>
-                    </div>
-                    <div>
-                      <strong>{formatUsd(coin.targetNotionalUsd)}</strong>
-                      <span>target</span>
-                    </div>
-                  </div>
-                ))}
-                {(!hyperConsensus || hyperConsensus.coins.length === 0) && <p className="muted">No consensus output yet. Import the active report run to sync watchlist profiles.</p>}
-              </div>
-
-              <div className="section-heading">
-                <strong>Strongest exposures</strong>
-                <span>Current contributor signals feeding the consensus engine; baseline means it was already open before tracking.</span>
-              </div>
-              <div className="compact-table">
-                <div className="table-head live-six"><span>Trader</span><span>Coin</span><span>Side</span><span>Alloc</span><span>Signal</span><span>uPnL</span></div>
-                {hyperConsensus?.exposures.slice(0, 30).map((exposure, index) => (
-                  <div className="table-row live-six" key={`exposure-${exposure.traderAddress}-${exposure.coin}-${index}`}>
-                    <span title={exposure.traderAddress}>{exposure.label || shortAddress(exposure.traderAddress)}</span>
-                    <span>{exposure.coin}</span>
-                    <span>{exposure.side} {exposure.isBaseline ? 'base' : 'live'}</span>
-                    <span>{exposure.currentAllocPct.toFixed(2)}% · {formatUsd(exposure.currentNotionalUsd)}</span>
-                    <strong>{exposure.weightedSignal.toFixed(5)}</strong>
-                    <span>{formatUsd(exposure.unrealizedPnlUsd)}</span>
-                  </div>
-                ))}
-                {(!hyperConsensus || hyperConsensus.exposures.length === 0) && <p className="muted">No current exposure rows yet.</p>}
-              </div>
-
-              <div className="section-heading">
-                <strong>Live Leaderboard</strong>
-                <span>
-                  {hyperLive ? `Updated ${formatTime(hyperLive.checkedAt)}` : 'Waiting for live copy worker data'} · source, copy state, and closed trade metrics from now onward.
-                </span>
-              </div>
-              <button className="primary-action secondary-action" onClick={loadHyperLiveLeaderboard}>
-                <RefreshCw size={16} /> Refresh live leaderboard
-              </button>
-              <div className="hyper-score-list">
-                {!hyperLive || hyperLive.traders.length === 0 ? <p className="muted">No live score snapshots yet. Enabled Hyperliquid traders will appear after the worker syncs.</p> : null}
-                {hyperLive?.traders.slice(0, 30).map((row, index) => (
-                  <div className="hyper-score-row live-score-row" key={row.traderAddress}>
-                    <div className="score-rank">
-                      <strong>#{index + 1}</strong>
-                      <span>{row.executeOrders ? 'real' : row.isEnabled ? 'shadow' : 'off'}</span>
-                    </div>
-                    <div>
-                      <strong>{row.label || shortAddress(row.traderAddress)}</strong>
-                      <span>Live {row.liveScore.toFixed(1)} · conf {row.confidence.toFixed(1)} · net {formatUsd(row.netPnlUsd)} · acct {row.pnlPctAccount.toFixed(2)}%</span>
-                      <small>
-                        active {row.activePositions} · closed {row.closedPositions} · win {row.winRate.toFixed(1)}% · copied {row.copiedPositions} · skipped {row.skippedPositions}
-                      </small>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="section-heading">
-                <strong>Live active positions</strong>
-                <span>Current source exposure for tracked Hyperliquid traders.</span>
-              </div>
-              <div className="compact-table">
-                <div className="table-head live-six"><span>Trader</span><span>Coin</span><span>Side</span><span>Value</span><span>uPnL</span><span>Age</span></div>
-                {hyperLive?.activePositions.slice(0, 40).map((position) => (
-                  <div className="table-row live-six" key={`live-${position.id}`}>
-                    <span>{shortAddress(position.traderAddress)}</span>
-                    <span>{position.okxSymbol || position.coin}</span>
-                    <span>{position.side} {position.openedFromTracking ? 'live' : 'base'}</span>
-                    <span>{formatUsd(position.currentNotionalUsd)} · {position.positionPctOfAccount.toFixed(2)}%</span>
-                    <strong>{formatUsd(position.unrealizedPnlUsd)}</strong>
-                    <span>{formatDuration(position.durationSeconds)}</span>
-                  </div>
-                ))}
-                {(!hyperLive || hyperLive.activePositions.length === 0) && <p className="muted">No live active positions recorded yet.</p>}
-              </div>
-
-              <div className="section-heading">
-                <strong>Live closed positions</strong>
-                <span>Positions closed after tracking started, with source PnL and duration.</span>
-              </div>
-              <div className="compact-table">
-                <div className="table-head live-six"><span>Trader</span><span>Coin</span><span>Side</span><span>Hold</span><span>Entry → Exit</span><span>Net</span></div>
-                {hyperLive?.closedPositions.slice(0, 40).map((position) => (
-                  <div className="table-row live-six" key={`closed-${position.id}`}>
-                    <span>{shortAddress(position.traderAddress)}</span>
-                    <span>{position.okxSymbol || position.coin}</span>
-                    <span>{position.side}</span>
-                    <span>{formatDuration(position.durationSeconds)}</span>
-                    <span>{Number(position.entryPrice || 0).toFixed(4)} → {Number(position.exitPrice || 0).toFixed(4)}</span>
-                    <strong>{formatUsd(position.netPnlUsd)} · {position.pnlPctAccount.toFixed(3)}%</strong>
-                  </div>
-                ))}
-                {(!hyperLive || hyperLive.closedPositions.length === 0) && <p className="muted">No live closed positions yet.</p>}
-              </div>
-
-              <div className="section-heading">
-                <strong>Recent Hyperliquid fills</strong>
-                <span>Raw live fills detected by the worker and used for reconstruction.</span>
-              </div>
-              <div className="compact-table">
-                <div className="table-head live-six"><span>Time</span><span>Trader</span><span>Coin</span><span>Dir</span><span>Price</span><span>PnL</span></div>
-                {hyperLive?.recentFills.slice(0, 40).map((fill, index) => (
-                  <div className="table-row live-six" key={`fill-${fill.traderAddress}-${fill.exchangeTime}-${index}`}>
-                    <span>{formatTime(fill.exchangeTime)}</span>
-                    <span>{shortAddress(fill.traderAddress)}</span>
-                    <span>{fill.okxSymbol || fill.coin}</span>
-                    <span>{fill.direction || fill.side}</span>
-                    <span>{Number(fill.price || 0).toFixed(4)}</span>
-                    <strong>{formatUsd(fill.closedPnlUsd - fill.feeUsd)}</strong>
-                  </div>
-                ))}
-                {(!hyperLive || hyperLive.recentFills.length === 0) && <p className="muted">No live fills recorded yet.</p>}
-              </div>
-
-              <div className="scan-list">
-                {hyperRuns.length === 0 && <p className="muted">No Hyperliquid profile reports found yet.</p>}
-                {hyperRuns.map((run) => (
-                  <button key={run.id} className={activeHyperRun?.id === run.id ? 'active-list-row' : ''} onClick={() => loadHyperRunTraders(run)}>
-                    {run.id} · {run.traderCount} traders · {run.hasSummary ? 'summary ready' : 'partial'} · {run.hasHistoricalScoreboard ? 'scored' : 'unscored'}
-                  </button>
-                ))}
-              </div>
-
-              <div className="section-heading">
-                <strong>Historical Scoreboard</strong>
-                <span>{activeHyperRun ? activeHyperRun.id : 'Select a report run'} · HQS ranks historical copy quality; confidence is intentionally separate.</span>
-              </div>
-              <div className="hyper-score-list">
-                {hyperScoreboard.length === 0 && <p className="muted">No historical scoreboard generated for this run yet.</p>}
-                {hyperScoreboard.slice(0, 40).map((row) => (
-                  <button
-                    key={row.address}
-                    className={selectedHyperScore?.address === row.address ? 'hyper-score-row selected' : 'hyper-score-row'}
-                    onClick={() => loadHyperScoreDetail(row)}
-                  >
-                    <div className="score-rank">
-                      <strong>#{row.rank}</strong>
-                      <span>{row.watchlist_eligible === 'yes' ? 'watch' : 'review'}</span>
-                    </div>
-                    <div>
-                      <strong>{shortAddress(row.address)}</strong>
-                      <span>HQS {Number(row.historical_quality_score || 0).toFixed(1)} · conf {Number(row.confidence_score || 0).toFixed(1)} · OKX {formatUsd(Number(row.okx_tradable_net_pnl_usd ?? row.major_net_pnl_usd ?? 0))}</span>
-                      <small>
-                        win {row.okx_tradable_win_rate_pct ?? row.major_win_rate_pct ?? '--'}% · positions {row.okx_tradable_closed_positions ?? row.major_closed_positions ?? '0'} · {row.gate_reasons || row.warnings || 'clear'}
-                      </small>
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              <div className="section-heading">
-                <strong>Trader shortlist</strong>
-                <span>{activeHyperRun ? activeHyperRun.id : 'Select a report run'} · sorted by OKX-tradable closed-position PnL.</span>
-              </div>
-              <div className="hyper-trader-list">
-                {hyperTraders.slice(0, 50).map((trader) => (
-                  <button
-                    key={trader.address}
-                    className={selectedHyperTrader?.address === trader.address ? 'hyper-trader-row selected' : 'hyper-trader-row'}
-                    onClick={() => loadHyperTraderDetail(trader)}
-                  >
-                    <strong>{shortAddress(trader.address)}</strong>
-                    <span>{trader.verdict || 'review'} · account ${trader.account_value_usd || trader.current_account_value_usd || '--'}</span>
-                    <small>
-                      net ${trader.net_closed_pnl_usd || '--'} · OKX ${trader.okx_tradable_net_pnl_usd ?? trader.copyable_position_net_pnl_usd ?? '--'} · closed {trader.okx_tradable_closed_positions ?? trader.closed_position_count ?? '0'}
-                    </small>
-                  </button>
-                ))}
-              </div>
-
-              {hyperTraderDetail && (
-                <div className="hyper-detail">
-                  <div className="section-heading">
-                    <strong>{shortAddress(hyperTraderDetail.address)} detail</strong>
-                    <span>{hyperTraderDetail.summary.verdict || 'review'} · fills {hyperTraderDetail.summary.fill_count || '0'} · active positions {hyperTraderDetail.summary.active_positions || '0'}</span>
-                  </div>
-                  {selectedHyperScore && selectedHyperScore.address === hyperTraderDetail.address && (
-                    <div className="score-breakdown">
-                      <div><span>HQS</span><strong>{Number(selectedHyperScore.historical_quality_score || 0).toFixed(1)}</strong></div>
-                      <div><span>Confidence</span><strong>{Number(selectedHyperScore.confidence_score || 0).toFixed(1)}</strong></div>
-                      <div><span>Copyability</span><strong>{Number(selectedHyperScore.copyability || 0).toFixed(1)}</strong></div>
-                      <div><span>Risk</span><strong>{Number(selectedHyperScore.risk_control || 0).toFixed(1)}</strong></div>
-                      <p>{selectedHyperScore.gate_reasons || selectedHyperScore.warnings || 'No hard-gate warning recorded.'}</p>
-                    </div>
-                  )}
-                  <div className="hyper-summary-grid">
-                    <div><span>Account</span><strong>${hyperTraderDetail.summary.account_value_usd || '--'}</strong></div>
-                    <div><span>Net PnL</span><strong>${hyperTraderDetail.summary.net_closed_pnl_usd || '--'}</strong></div>
-                    <div><span>OKX-tradable PnL</span><strong>${hyperTraderDetail.summary.okx_tradable_net_pnl_usd ?? hyperTraderDetail.summary.copyable_position_net_pnl_usd ?? '--'}</strong></div>
-                    <div><span>Win rate</span><strong>{hyperTraderDetail.summary.position_win_rate_pct || '--'}%</strong></div>
-                  </div>
-
-                  <div className="section-heading">
-                    <strong>Active positions</strong>
-                    <span>Current Hyperliquid perp exposure.</span>
-                  </div>
-                  <div className="compact-table">
-                    <div className="table-head four"><span>Coin</span><span>Side</span><span>Value</span><span>uPnL</span></div>
-                    {hyperTraderDetail.activePositions.slice(0, 12).map((row, index) => (
-                      <div className="table-row four" key={`${row.coin}-${index}`}>
-                        <span>{row.coin}</span><span>{row.side}</span><span>${row.position_value_usd}</span><span>${row.unrealized_pnl_usd}</span>
-                      </div>
-                    ))}
-                    {hyperTraderDetail.activePositions.length === 0 && <p className="muted">No active position in this report.</p>}
-                  </div>
-
-                  <div className="section-heading">
-                    <strong>Closed positions</strong>
-                    <span>Reconstructed exchange-style history from fills.</span>
-                  </div>
-                  <div className="compact-table">
-                    <div className="table-head five"><span>Coin</span><span>Side</span><span>Hold</span><span>Entry → Exit</span><span>Net</span></div>
-                    {hyperTraderDetail.closedPositions.slice(0, 30).map((row, index) => (
-                      <div className="table-row five" key={`${row.coin}-${row.closed_at}-${index}`}>
-                        <span>{row.coin}</span>
-                        <span>{row.side}</span>
-                        <span>{row.holding_days}d</span>
-                        <span>{Number(row.avg_entry_price || 0).toFixed(4)} → {Number(row.avg_exit_price || 0).toFixed(4)}</span>
-                        <strong>${row.net_pnl_usd}</strong>
-                      </div>
-                    ))}
-                    {hyperTraderDetail.closedPositions.length === 0 && <p className="muted">No fully closed positions reconstructed in this window.</p>}
-                  </div>
-
-                  <div className="section-heading">
-                    <strong>Coin summary</strong>
-                    <span>Raw fill-level realized PnL by market.</span>
-                  </div>
-                  <div className="compact-table">
-                    <div className="table-head four"><span>Coin</span><span>Fills</span><span>Notional</span><span>Net</span></div>
-                    {hyperTraderDetail.coinSummary.slice(0, 20).map((row, index) => (
-                      <div className="table-row four" key={`${row.coin}-${index}`}>
-                        <span>{row.coin}</span><span>{row.fill_count}</span><span>${row.notional_usd}</span><strong>${row.net_closed_pnl_usd}</strong>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
 

@@ -10,6 +10,318 @@
   overflow: hidden;
 }
 
+.hyper-page {
+  min-height: 100vh;
+  padding: 22px 26px 40px;
+  background: #030712;
+  color: #e5eefc;
+}
+
+.hyper-header {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+
+.hyper-header h1 {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.hyper-header span {
+  display: block;
+  margin-top: 7px;
+  color: #94a3b8;
+}
+
+.hyper-home-link,
+.hyper-top-tabs button,
+.hyper-panel button,
+.hyper-toolbar button,
+.hyper-danger-row button,
+.copy-cell {
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.76);
+  color: #dbeafe;
+}
+
+.hyper-home-link {
+  min-height: 38px;
+}
+
+.hyper-top-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px 0 14px;
+  margin-bottom: 12px;
+  background: #030712;
+}
+
+.hyper-top-tabs button {
+  min-height: 36px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.hyper-top-tabs button.active {
+  border-color: #38bdf8;
+  background: rgba(14, 165, 233, 0.22);
+  color: #bae6fd;
+}
+
+.hyper-card-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+
+.hyper-card {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.hyper-card span {
+  display: block;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.hyper-card strong {
+  display: block;
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+}
+
+.hyper-card.good strong,
+.pos {
+  color: #86efac;
+}
+
+.hyper-card.bad strong,
+.neg {
+  color: #fca5a5;
+}
+
+.hyper-card.warn strong,
+.tag.warn {
+  color: #fde68a;
+}
+
+.hyper-card.info strong {
+  color: #7dd3fc;
+}
+
+.hyper-card.muted strong,
+.tag.muted {
+  color: #94a3b8;
+}
+
+.hyper-panel {
+  min-width: 0;
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.7);
+}
+
+.hyper-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.hyper-panel-head strong {
+  font-size: 16px;
+}
+
+.hyper-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 180px 180px 110px;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.hyper-toolbar select,
+.hyper-toolbar input {
+  min-height: 38px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.8);
+  color: #e5eefc;
+  padding: 8px 10px;
+}
+
+.hyper-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 8px;
+}
+
+.hyper-table {
+  width: 100%;
+  min-width: 1280px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.hyper-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #07111f;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.hyper-table th,
+.hyper-table td {
+  max-width: 260px;
+  padding: 8px 9px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.10);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hyper-table th.num,
+.hyper-table td.num {
+  text-align: right;
+}
+
+.hyper-table th button {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #93c5fd;
+  text-align: inherit;
+  font: inherit;
+}
+
+.hyper-table tbody tr.clickable {
+  cursor: pointer;
+}
+
+.hyper-table tbody tr:hover {
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.empty-cell {
+  margin: 0;
+  padding: 18px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.tag {
+  display: inline-flex;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  font-size: 11px;
+}
+
+.copy-cell {
+  min-height: 26px;
+  padding: 0 8px;
+}
+
+.hyper-profile-head {
+  display: grid;
+  grid-template-columns: minmax(360px, 2fr) repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.hyper-profile-head > div {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.56);
+}
+
+.hyper-profile-head span {
+  display: block;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.hyper-profile-head strong {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hyper-sub-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  margin: 8px 0 12px;
+}
+
+.hyper-sub-tabs button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.7);
+  color: #dbeafe;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+
+.hyper-sub-tabs button.active {
+  border-color: #38bdf8;
+  background: rgba(14, 165, 233, 0.22);
+}
+
+.hyper-two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hyper-danger-row {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.hyper-danger-row button {
+  min-height: 38px;
+  padding: 0 12px;
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fecaca;
+}
+
+.hyper-link-button {
+  text-transform: none;
+  color: #bae6fd;
+}
+
 .mission-shell.panel-resizing,
 .mission-shell.panel-resizing * {
   cursor: col-resize !important;
