@@ -127,15 +127,21 @@ public sealed class HyperliquidConsensusExecutionService : IHyperliquidConsensus
         var rows = rawRows.Select(row =>
             {
                 var signedTarget = row.SignedTargetNotionalUsd * scale;
-                if (Math.Abs(signedTarget) < _settings.MinOrderNotionalUsd)
+                var current = EstimatedSignedOkxNotional(okxPositions, row.Coin, leverage);
+                var openNotionalFloor = _settings.MinOrderNotionalUsd + _settings.MinRebalanceNotionalUsd;
+
+                if (Math.Abs(current) <= 0 && Math.Abs(signedTarget) < openNotionalFloor)
+                {
+                    signedTarget = 0m;
+                }
+                else if (Math.Abs(signedTarget) < _settings.MinOrderNotionalUsd)
                 {
                     signedTarget = 0m;
                 }
 
-                var current = EstimatedSignedOkxNotional(okxPositions, row.Coin, leverage);
                 var delta = signedTarget - current;
                 var action = ActionFor(current, signedTarget, delta);
-                var reason = ReasonFor(row.DirectionScore, signedTarget, delta, action);
+                var reason = ReasonFor(row.DirectionScore, current, signedTarget, delta, action, openNotionalFloor);
                 return new HyperliquidConsensusExecutionPlanRow
                 {
                     Coin = row.Coin,
@@ -255,11 +261,16 @@ public sealed class HyperliquidConsensusExecutionService : IHyperliquidConsensus
         return Math.Abs(target) > Math.Abs(current) ? "INCREASE" : "REDUCE";
     }
 
-    private string ReasonFor(decimal directionScore, decimal target, decimal delta, string action)
+    private string ReasonFor(decimal directionScore, decimal current, decimal target, decimal delta, string action, decimal openNotionalFloor)
     {
         if (action == "SKIP" && Math.Abs(directionScore) < _settings.Threshold)
         {
             return "below_threshold";
+        }
+
+        if (action == "SKIP" && Math.Abs(current) <= 0 && Math.Abs(target) < openNotionalFloor)
+        {
+            return "below_open_buffer";
         }
 
         if (action == "SKIP" && Math.Abs(target) < _settings.MinOrderNotionalUsd)
