@@ -58,6 +58,8 @@ public sealed class HyperliquidLiveController : ControllerBase
             currentOkxEquity = okx?.TotalUsd,
             realExecutionMode = enabled.Any(x => x.ExecuteOrders) ? "Enabled" : "Shadow Only",
             realExecutionTraders = enabled.Count(x => x.ExecuteOrders),
+            trackingStartedAt = enabled.Select(x => (DateTime?)x.CreatedAt).OrderBy(x => x).FirstOrDefault(),
+            latestScoreAt = latestScores.Select(x => (DateTime?)x.ScoredAt).OrderByDescending(x => x).FirstOrDefault(),
             checkedAt = DateTime.UtcNow
         });
     }
