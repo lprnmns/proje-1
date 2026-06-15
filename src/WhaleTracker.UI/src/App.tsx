@@ -1136,14 +1136,20 @@ function HyperPositionsPage({ path }: { path: string }) {
 
 function HyperExecutionPage({ path }: { path: string }) {
   const [summary, setSummary] = useState<any>(null)
+  const [plan, setPlan] = useState<any>(null)
   const [orders, setOrders] = useState<any[]>([])
   const [positions, setPositions] = useState<any[]>([])
   const load = useCallback(() => {
     fetchJson<any>('/api/hyperliquid/execution/summary').then(setSummary).catch(() => setSummary(null))
+    fetchJson<any>('/api/hyperliquid/execution/plan').then(setPlan).catch(() => setPlan(null))
     fetchJson<any[]>('/api/hyperliquid/execution/orders').then(setOrders).catch(() => setOrders([]))
     fetchJson<any[]>('/api/hyperliquid/execution/positions').then(setPositions).catch(() => setPositions([]))
   }, [])
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    const timer = window.setInterval(load, 5000)
+    return () => window.clearInterval(timer)
+  }, [load])
   const confirmAction = async (message: string, url: string) => {
     if (!window.confirm(message)) return
     await fetchJson(url, { method: 'POST' })
@@ -1156,6 +1162,14 @@ function HyperExecutionPage({ path }: { path: string }) {
         { label: 'Real execution mode', value: summary?.realExecutionMode ?? '—', tone: summary?.realExecutionMode === 'Enabled' ? 'warn' : 'muted' },
         { label: 'Real execution traders', value: summary?.realExecutionTraders ?? '—' },
         { label: 'Open OKX positions', value: positions.length },
+        { label: 'Shadow threshold', value: dash(plan?.config?.threshold) },
+        { label: 'Multiplier', value: dash(plan?.config?.multiplier) },
+        { label: 'Leverage / mode', value: plan?.config ? `${plan.config.leverage}x ${plan.config.marginMode}` : '—' },
+        { label: 'Min order', value: dash(plan?.config?.minOrderNotionalUsd, formatUsd) },
+        { label: 'Min rebalance', value: dash(plan?.config?.minRebalanceNotionalUsd, formatUsd) },
+        { label: 'Active target coins', value: plan?.summary?.activeTargetCoins ?? '—' },
+        { label: 'Gross target notional', value: dash(plan?.summary?.grossTargetNotionalUsd, formatUsd) },
+        { label: 'Gross target margin', value: dash(plan?.summary?.grossTargetMarginUsd, formatUsd) },
       ]} />
       <section className="hyper-danger-row">
         <button onClick={() => confirmAction('Disable real execution for every trader?', '/api/hyperliquid/execution/disable-real')}>Disable real execution</button>
@@ -1163,18 +1177,29 @@ function HyperExecutionPage({ path }: { path: string }) {
         <button onClick={() => confirmAction('Pause all is not yet wired separately. Disable real execution instead?', '/api/hyperliquid/execution/disable-real')}>Pause all</button>
       </section>
       <section className="hyper-panel">
-        <div className="hyper-panel-head"><strong>Target exposure per coin</strong></div>
+        <div className="hyper-panel-head">
+          <strong>Shadow OKX target positions</strong>
+          <span>Real orders disabled. Formula: abs(score) at or above {dash(plan?.config?.threshold)} creates a target; target notional = score * {dash(plan?.config?.multiplier)}.</span>
+        </div>
         <HyperTable
           columns={[
             { key: 'coin', label: 'Coin' },
+            { key: 'directionScore', label: 'Score', numeric: true, render: r => dash(r.directionScore) },
+            { key: 'qualityScore', label: 'Quality', numeric: true, render: r => dash(r.qualityScore) },
+            { key: 'conflictRatio', label: 'Conflict', numeric: true, render: r => dash(r.conflictRatio, v => `${(v * 100).toFixed(0)}%`) },
+            { key: 'participation', label: 'Participation', numeric: true, render: r => dash(r.participation, v => `${(v * 100).toFixed(1)}%`) },
+            { key: 'contributorCount', label: 'Wallets', numeric: true },
             { key: 'targetSide', label: 'Target Side' },
+            { key: 'rawTargetNotionalUsd', label: 'Raw Target', numeric: true, render: r => <span className={Number(r.rawTargetNotionalUsd || 0) >= 0 ? 'pos' : 'neg'}>{dash(r.rawTargetNotionalUsd, formatUsd)}</span> },
+            { key: 'signedTargetNotionalUsd', label: 'Signed Target', numeric: true, render: r => <span className={Number(r.signedTargetNotionalUsd || 0) >= 0 ? 'pos' : 'neg'}>{dash(r.signedTargetNotionalUsd, formatUsd)}</span> },
             { key: 'targetNotionalUsd', label: 'Target Notional', numeric: true, render: r => dash(r.targetNotionalUsd, formatUsd) },
+            { key: 'targetMarginUsd', label: 'Target Margin', numeric: true, render: r => dash(r.targetMarginUsd, formatUsd) },
             { key: 'currentOkxNotionalUsd', label: 'Current OKX Notional', numeric: true, render: r => dash(r.currentOkxNotionalUsd, formatUsd) },
             { key: 'deltaNotionalUsd', label: 'Delta', numeric: true, render: r => <span className={Number(r.deltaNotionalUsd || 0) >= 0 ? 'pos' : 'neg'}>{dash(r.deltaNotionalUsd, formatUsd)}</span> },
             { key: 'action', label: 'Action' },
             { key: 'skipReason', label: 'Skip reason' },
           ]}
-          rows={summary?.targetExposurePerCoin || []}
+          rows={plan?.rows || summary?.targetExposurePerCoin || []}
           getKey={(row) => row.coin}
         />
       </section>

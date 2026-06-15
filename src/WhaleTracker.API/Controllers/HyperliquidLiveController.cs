@@ -11,6 +11,14 @@ namespace WhaleTracker.API.Controllers;
 [Route("api/hyperliquid")]
 public sealed class HyperliquidLiveController : ControllerBase
 {
+    private const decimal ShadowConsensusThreshold = 15m;
+    private const decimal ShadowConsensusMultiplier = 0.75m;
+    private const decimal ShadowMinOrderNotionalUsd = 6.85m;
+    private const decimal ShadowMinRebalanceNotionalUsd = 8m;
+    private const decimal ShadowLeverage = 2m;
+    private const decimal ShadowMaxCoinMarginPct = 0.15m;
+    private const decimal ShadowMaxTotalMarginPct = 0.35m;
+
     private readonly WhaleTrackerDbContext _db;
     private readonly IHyperliquidConsensusService _consensusService;
     private readonly IOkxService _okxService;
@@ -403,30 +411,37 @@ public sealed class HyperliquidLiveController : ControllerBase
             .ToListAsync(cancellationToken);
         var consensus = await _consensusService.GetSnapshotAsync(cancellationToken);
         var okxPositions = okx?.ActivePositions ?? new List<Core.Models.Position>();
+        var plan = BuildShadowExecutionPlan(consensus.Coins, okxPositions, okx?.TotalUsd ?? 100m);
         return Ok(new
         {
             okxEquity = okx?.TotalUsd,
             realExecutionMode = traders.Any(x => x.ExecuteOrders) ? "Enabled" : "Shadow Only",
             realExecutionTraders = traders.Count(x => x.ExecuteOrders),
             openOkxPositions = okxPositions,
-            targetExposurePerCoin = consensus.Coins.Select(x => new
-            {
-                x.Coin,
-                x.TargetSide,
-                x.TargetNotionalUsd,
-                currentOkxNotionalUsd = EstimatedSignedOkxNotional(okxPositions, x.Coin),
-                deltaNotionalUsd = DesiredSignedNotional(x.TargetSide, x.TargetNotionalUsd) -
-                    EstimatedSignedOkxNotional(okxPositions, x.Coin),
-                x.Action,
-                x.SkipReason
-            }),
+            shadowExecutionPlan = plan,
+            targetExposurePerCoin = plan.Rows,
             riskCaps = new
             {
-                maxRealMarginUsedUsd = 25,
-                maxGrossNotionalUsd = 300,
-                maxCoinNotionalUsd = 80
+                leverage = ShadowLeverage,
+                maxCoinMarginPct = ShadowMaxCoinMarginPct,
+                maxTotalMarginPct = ShadowMaxTotalMarginPct,
+                maxCoinNotionalUsd = plan.Config.MaxCoinNotionalUsd,
+                maxGrossNotionalUsd = plan.Config.MaxTotalNotionalUsd,
+                minOrderNotionalUsd = ShadowMinOrderNotionalUsd,
+                minRebalanceNotionalUsd = ShadowMinRebalanceNotionalUsd
             }
         });
+    }
+
+    [HttpGet("execution/plan")]
+    public async Task<IActionResult> ExecutionPlan(CancellationToken cancellationToken)
+    {
+        var okx = await SafeOkxAccount(cancellationToken);
+        var consensus = await _consensusService.GetSnapshotAsync(cancellationToken);
+        return Ok(BuildShadowExecutionPlan(
+            consensus.Coins,
+            okx?.ActivePositions ?? new List<Core.Models.Position>(),
+            okx?.TotalUsd ?? 100m));
     }
 
     [HttpGet("execution/orders")]
@@ -566,15 +581,170 @@ public sealed class HyperliquidLiveController : ControllerBase
         }
     }
 
+    private static ShadowExecutionPlan BuildShadowExecutionPlan(
+        IReadOnlyList<Core.Models.CoinConsensusView> coins,
+        IReadOnlyList<Core.Models.Position> okxPositions,
+        decimal equityUsd)
+    {
+        var equity = equityUsd > 0 ? equityUsd : 100m;
+        var maxCoinNotional = equity * ShadowLeverage * ShadowMaxCoinMarginPct;
+        var maxTotalNotional = equity * ShadowLeverage * ShadowMaxTotalMarginPct;
+
+        var rawRows = coins
+            .Select(coin =>
+            {
+                var signedRaw = Math.Abs(coin.DirectionScore) < ShadowConsensusThreshold
+                    ? 0m
+                    : coin.DirectionScore * ShadowConsensusMultiplier;
+                var signedCapped = Math.Clamp(signedRaw, -maxCoinNotional, maxCoinNotional);
+                if (Math.Abs(signedCapped) < ShadowMinOrderNotionalUsd)
+                {
+                    signedCapped = 0m;
+                }
+
+                return new ShadowTargetDraft(
+                    coin.Coin,
+                    coin.DirectionScore,
+                    coin.QualityScore,
+                    coin.ConflictRatio,
+                    coin.Participation,
+                    coin.ContributorCount,
+                    signedRaw,
+                    signedCapped);
+            })
+            .ToList();
+
+        var gross = rawRows.Sum(x => Math.Abs(x.SignedTargetNotionalUsd));
+        var scale = gross > maxTotalNotional && maxTotalNotional > 0 ? maxTotalNotional / gross : 1m;
+        var rows = rawRows
+            .Select(row =>
+            {
+                var signedTarget = row.SignedTargetNotionalUsd * scale;
+                if (Math.Abs(signedTarget) < ShadowMinOrderNotionalUsd)
+                {
+                    signedTarget = 0m;
+                }
+
+                var current = EstimatedSignedOkxNotional(okxPositions, row.Coin, ShadowLeverage);
+                var delta = signedTarget - current;
+                var action = ShadowAction(current, signedTarget, delta);
+                var reason = ShadowReason(row.DirectionScore, signedTarget, delta, action);
+                return new ShadowExecutionPlanRow
+                {
+                    Coin = row.Coin,
+                    DirectionScore = row.DirectionScore,
+                    QualityScore = row.QualityScore,
+                    ConflictRatio = row.ConflictRatio,
+                    Participation = row.Participation,
+                    ContributorCount = row.ContributorCount,
+                    TargetSide = signedTarget > 0 ? "LONG" : signedTarget < 0 ? "SHORT" : "FLAT",
+                    RawTargetNotionalUsd = row.SignedRawNotionalUsd,
+                    SignedTargetNotionalUsd = signedTarget,
+                    TargetNotionalUsd = Math.Abs(signedTarget),
+                    TargetMarginUsd = Math.Abs(signedTarget) / ShadowLeverage,
+                    CurrentOkxNotionalUsd = current,
+                    DeltaNotionalUsd = delta,
+                    Action = action,
+                    SkipReason = reason
+                };
+            })
+            .OrderByDescending(x => Math.Abs(x.DeltaNotionalUsd))
+            .ThenByDescending(x => Math.Abs(x.SignedTargetNotionalUsd))
+            .ToList();
+
+        var activeTargets = rows.Where(x => Math.Abs(x.SignedTargetNotionalUsd) > 0).ToList();
+        return new ShadowExecutionPlan
+        {
+            Mode = "Shadow Only",
+            Config = new ShadowExecutionPlanConfig
+            {
+                Threshold = ShadowConsensusThreshold,
+                Multiplier = ShadowConsensusMultiplier,
+                MinOrderNotionalUsd = ShadowMinOrderNotionalUsd,
+                MinRebalanceNotionalUsd = ShadowMinRebalanceNotionalUsd,
+                Leverage = ShadowLeverage,
+                MarginMode = "isolated",
+                MaxCoinMarginPct = ShadowMaxCoinMarginPct,
+                MaxTotalMarginPct = ShadowMaxTotalMarginPct,
+                EquityUsd = equity,
+                MaxCoinNotionalUsd = maxCoinNotional,
+                MaxTotalNotionalUsd = maxTotalNotional,
+                TotalScaleApplied = scale
+            },
+            Summary = new ShadowExecutionPlanSummary
+            {
+                ActiveTargetCoins = activeTargets.Count,
+                GrossTargetNotionalUsd = activeTargets.Sum(x => Math.Abs(x.SignedTargetNotionalUsd)),
+                GrossTargetMarginUsd = activeTargets.Sum(x => Math.Abs(x.TargetMarginUsd)),
+                OpenActions = rows.Count(x => x.Action is "OPEN_LONG" or "OPEN_SHORT"),
+                CloseActions = rows.Count(x => x.Action == "CLOSE"),
+                RebalanceActions = rows.Count(x => x.Action is "INCREASE" or "REDUCE" or "FLIP"),
+                HoldActions = rows.Count(x => x.Action == "HOLD")
+            },
+            Rows = rows
+        };
+    }
+
+    private static string ShadowAction(decimal current, decimal target, decimal delta)
+    {
+        if (Math.Abs(current) <= 0 && Math.Abs(target) <= 0)
+        {
+            return "SKIP";
+        }
+
+        if (Math.Abs(current) > 0 && Math.Abs(target) <= 0)
+        {
+            return "CLOSE";
+        }
+
+        if (Math.Abs(current) <= 0)
+        {
+            return target > 0 ? "OPEN_LONG" : "OPEN_SHORT";
+        }
+
+        if (Math.Sign(current) != Math.Sign(target))
+        {
+            return "FLIP";
+        }
+
+        if (Math.Abs(delta) < ShadowMinRebalanceNotionalUsd)
+        {
+            return "HOLD";
+        }
+
+        return Math.Abs(target) > Math.Abs(current) ? "INCREASE" : "REDUCE";
+    }
+
+    private static string ShadowReason(decimal directionScore, decimal target, decimal delta, string action)
+    {
+        if (action == "SKIP" && Math.Abs(directionScore) < ShadowConsensusThreshold)
+        {
+            return "below_threshold";
+        }
+
+        if (action == "SKIP" && Math.Abs(target) < ShadowMinOrderNotionalUsd)
+        {
+            return "below_min_order";
+        }
+
+        if (action == "HOLD" && Math.Abs(delta) < ShadowMinRebalanceNotionalUsd)
+        {
+            return "delta_below_rebalance";
+        }
+
+        return string.Empty;
+    }
+
     private static decimal EstimatedSignedOkxNotional(
         IReadOnlyList<Core.Models.Position> positions,
-        string coin)
+        string coin,
+        decimal leverage)
     {
         return positions
             .Where(x => x.Symbol.Equals(coin, StringComparison.OrdinalIgnoreCase))
             .Sum(x =>
             {
-                var notional = Math.Abs(x.MarginUsd) * 10m;
+                var notional = Math.Abs(x.MarginUsd) * leverage;
                 return x.Direction.Equals("Short", StringComparison.OrdinalIgnoreCase)
                     ? -notional
                     : notional;
@@ -589,4 +759,68 @@ public sealed class HyperliquidLiveController : ControllerBase
                 : 0m;
 
     private static string NormalizeAddress(string value) => value.Trim().ToLowerInvariant();
+
+    private sealed record ShadowTargetDraft(
+        string Coin,
+        decimal DirectionScore,
+        decimal QualityScore,
+        decimal ConflictRatio,
+        decimal Participation,
+        int ContributorCount,
+        decimal SignedRawNotionalUsd,
+        decimal SignedTargetNotionalUsd);
+
+    private sealed class ShadowExecutionPlan
+    {
+        public string Mode { get; set; } = "Shadow Only";
+        public ShadowExecutionPlanConfig Config { get; set; } = new();
+        public ShadowExecutionPlanSummary Summary { get; set; } = new();
+        public List<ShadowExecutionPlanRow> Rows { get; set; } = new();
+    }
+
+    private sealed class ShadowExecutionPlanConfig
+    {
+        public decimal Threshold { get; set; }
+        public decimal Multiplier { get; set; }
+        public decimal MinOrderNotionalUsd { get; set; }
+        public decimal MinRebalanceNotionalUsd { get; set; }
+        public decimal Leverage { get; set; }
+        public string MarginMode { get; set; } = "isolated";
+        public decimal MaxCoinMarginPct { get; set; }
+        public decimal MaxTotalMarginPct { get; set; }
+        public decimal EquityUsd { get; set; }
+        public decimal MaxCoinNotionalUsd { get; set; }
+        public decimal MaxTotalNotionalUsd { get; set; }
+        public decimal TotalScaleApplied { get; set; }
+    }
+
+    private sealed class ShadowExecutionPlanSummary
+    {
+        public int ActiveTargetCoins { get; set; }
+        public decimal GrossTargetNotionalUsd { get; set; }
+        public decimal GrossTargetMarginUsd { get; set; }
+        public int OpenActions { get; set; }
+        public int CloseActions { get; set; }
+        public int RebalanceActions { get; set; }
+        public int HoldActions { get; set; }
+    }
+
+    private sealed class ShadowExecutionPlanRow
+    {
+        public string Coin { get; set; } = string.Empty;
+        public decimal DirectionScore { get; set; }
+        public decimal QualityScore { get; set; }
+        public decimal ConflictRatio { get; set; }
+        public decimal Participation { get; set; }
+        public int ContributorCount { get; set; }
+        public string TargetSide { get; set; } = "FLAT";
+        public decimal RawTargetNotionalUsd { get; set; }
+        public decimal SignedTargetNotionalUsd { get; set; }
+        public decimal TargetNotionalUsd { get; set; }
+        public decimal TargetMarginUsd { get; set; }
+        public decimal CurrentOkxNotionalUsd { get; set; }
+        public decimal DeltaNotionalUsd { get; set; }
+        public string Action { get; set; } = string.Empty;
+        public string SkipReason { get; set; } = string.Empty;
+    }
 }
