@@ -156,6 +156,7 @@ class SimResult:
     multiplier: float
     target_curve: str
     curve_param: float
+    coin_weight_mode: str
     initial_equity: float
     final_equity: float
     pnl_usd: float
@@ -851,11 +852,73 @@ def response_target_notional(
     return direction * magnitude
 
 
+MAJOR_COINS = {"BTC", "ETH", "SOL"}
+TIER2_COINS = {"BNB", "XRP", "DOGE", "ADA", "AVAX", "LINK", "SUI", "LTC", "BCH", "TRX", "TON", "HYPE"}
+HIGH_WICK_COINS = {"XPL", "GRASS", "FARTCOIN", "MEGA", "ZORA", "PUMP", "MOODENG", "POPCAT", "TRUMP"}
+
+
+def build_coin_weight_maps(
+    closed_positions: list[dict[str, str]],
+    coin_profiles: dict[tuple[str, str], SkillProfile],
+    okx_symbols: set[str],
+) -> dict[str, dict[str, float]]:
+    manual_liquidity: dict[str, float] = {}
+    major_boost: dict[str, float] = {}
+    for coin in okx_symbols:
+        if coin in MAJOR_COINS:
+            manual_liquidity[coin] = 1.0
+            major_boost[coin] = 1.75 if coin == "BTC" else 1.5
+        elif coin in TIER2_COINS:
+            manual_liquidity[coin] = 0.8
+            major_boost[coin] = 1.0
+        elif coin in HIGH_WICK_COINS:
+            manual_liquidity[coin] = 0.35
+            major_boost[coin] = 0.35
+        else:
+            manual_liquidity[coin] = 0.5
+            major_boost[coin] = 0.6
+
+    by_coin_rows: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for row in closed_positions:
+        by_coin_rows[row["coin"]].append(row)
+
+    profile_skill: dict[str, float] = {}
+    for coin in okx_symbols:
+        rows = by_coin_rows.get(coin, [])
+        net = sum(num(r.get("net_pnl_usd")) for r in rows)
+        gross_profit = sum(max(num(r.get("net_pnl_usd")), 0.0) for r in rows)
+        gross_loss = abs(sum(min(num(r.get("net_pnl_usd")), 0.0) for r in rows))
+        closed = len(rows)
+        win_rate = sum(1 for r in rows if num(r.get("net_pnl_usd")) > 0) / closed if closed else 0.0
+        pf = gross_profit / gross_loss if gross_loss > 0 else (5.0 if gross_profit > 0 else 0.0)
+        profile_count = sum(1 for (address, profile_coin), profile in coin_profiles.items()
+                            if profile_coin == coin and profile.closed_positions > 0)
+        sample = clamp(closed / 40.0, 0.0, 1.0)
+        pnl_score = clamp((net / 50_000.0 + 0.20) / 0.50, 0.0, 1.0)
+        pf_score = clamp((min(pf, 8.0) - 1.0) / 4.0, 0.0, 1.0)
+        breadth = clamp(profile_count / 8.0, 0.0, 1.0)
+        raw = 0.35 * pnl_score + 0.25 * pf_score + 0.20 * win_rate + 0.10 * sample + 0.10 * breadth
+        profile_skill[coin] = clamp(0.35 + raw * 1.30, 0.35, 1.75)
+
+    hybrid: dict[str, float] = {}
+    for coin in okx_symbols:
+        hybrid[coin] = clamp(manual_liquidity.get(coin, 0.5) * 0.55 + profile_skill.get(coin, 0.75) * 0.45, 0.30, 1.60)
+
+    return {
+        "flat": {coin: 1.0 for coin in okx_symbols},
+        "manual_liquidity": manual_liquidity,
+        "major_boost": major_boost,
+        "profile_skill": profile_skill,
+        "hybrid": hybrid,
+    }
+
+
 def target_notionals(
     consensus: dict[str, ConsensusSnapshot],
     multiplier: float,
     target_curve: str,
     curve_param: float,
+    coin_weights: dict[str, float],
     equity: float,
     leverage: float,
     max_coin_margin_pct: float,
@@ -879,6 +942,7 @@ def target_notionals(
             target_curve=target_curve,
             curve_param=curve_param,
         )
+        raw_target *= coin_weights.get(coin, 1.0)
         raw_target = clamp(raw_target, -max_coin_notional, max_coin_notional)
         if abs(raw_target) < min_order_notional:
             result.below_min_target_count += 1
@@ -906,6 +970,8 @@ def simulate(
     multiplier: float,
     target_curve: str,
     curve_param: float,
+    coin_weight_mode: str,
+    coin_weights: dict[str, float],
     initial_equity: float,
     leverage: float,
     max_coin_margin_pct: float,
@@ -924,6 +990,7 @@ def simulate(
         multiplier=multiplier,
         target_curve=target_curve,
         curve_param=curve_param,
+        coin_weight_mode=coin_weight_mode,
         initial_equity=initial_equity,
         final_equity=initial_equity,
         pnl_usd=0.0,
@@ -973,6 +1040,7 @@ def simulate(
             multiplier,
             target_curve,
             curve_param,
+            coin_weights,
             equity,
             leverage,
             max_coin_margin_pct,
@@ -1105,6 +1173,11 @@ def run_backtest(args: argparse.Namespace) -> Path:
     multipliers = [float(x.strip()) for x in str(args.multipliers).split(",") if x.strip()]
     target_curves = [str(x.strip()) for x in str(args.target_curves).split(",") if x.strip()]
     curve_params = [float(x.strip()) for x in str(args.curve_params).split(",") if x.strip()]
+    coin_weight_maps = build_coin_weight_maps(closed_positions, coin_profiles, okx_symbols)
+    coin_weight_modes = [str(x.strip()) for x in str(args.coin_weight_modes).split(",") if x.strip()]
+    for mode in coin_weight_modes:
+        if mode not in coin_weight_maps:
+            raise ValueError(f"Unknown coin weight mode: {mode}. Available: {', '.join(sorted(coin_weight_maps))}")
     step = timedelta(minutes=args.step_minutes)
     candle_start = min_time - timedelta(hours=2)
     candle_end = max_time + timedelta(hours=2)
@@ -1134,98 +1207,103 @@ def run_backtest(args: argparse.Namespace) -> Path:
         for target_curve in target_curves:
             params_for_curve = [1.0] if target_curve == "linear" and args.linear_single_param else curve_params
             for curve_param in params_for_curve:
-                for multiplier in multipliers:
-                    result = simulate(
-                        requested_days=days,
-                        start=start,
-                        end=end,
-                        events=events,
-                        general_profiles=general_profiles,
-                        coin_profiles=coin_profiles,
-                        side_profiles=side_profiles,
-                        candles=candles,
-                        event_prices=event_prices,
-                        multiplier=multiplier,
-                        target_curve=target_curve,
-                        curve_param=curve_param,
-                        initial_equity=args.initial_equity,
-                        leverage=args.leverage,
-                        max_coin_margin_pct=args.max_coin_margin_pct,
-                        max_total_margin_pct=args.max_total_margin_pct,
-                        min_order_notional=args.min_order_notional,
-                        min_rebalance_notional=args.min_rebalance_notional,
-                        score_threshold=args.score_threshold,
-                        ignore_action_gate=args.ignore_action_gate,
-                        fee_bps=args.fee_bps,
-                        slippage_bps=args.slippage_bps,
-                        step=step,
-                    )
-                    all_results.append(result)
-                    best_coin = max(result.coin_pnl.items(), key=lambda x: x[1])[0] if result.coin_pnl else ""
-                    worst_coin = min(result.coin_pnl.items(), key=lambda x: x[1])[0] if result.coin_pnl else ""
-                    summary_rows.append(
-                        {
-                            "requested_days": days,
-                            "simulated_days": round(result.simulated_days, 4),
-                            "coverage_limited": "yes" if result.simulated_days < days - 0.05 else "no",
-                            "target_curve": result.target_curve,
-                            "curve_param": round(result.curve_param, 6),
-                            "multiplier": result.multiplier,
-                            "initial_equity": round(result.initial_equity, 4),
-                            "final_equity": round(result.final_equity, 4),
-                            "pnl_usd": round(result.pnl_usd, 4),
-                            "pnl_pct": round(result.pnl_pct, 4),
-                            "max_drawdown_pct": round(result.max_drawdown_pct, 4),
-                            "trade_count": len(result.trades),
-                            "fees_slippage_usd": round(result.fees_and_slippage, 4),
-                            "below_min_target_count": result.below_min_target_count,
-                            "missing_price_count": result.missing_price_count,
-                            "consensus_points": result.consensus_points,
-                            "best_coin": best_coin,
-                            "best_coin_pnl": round(result.coin_pnl.get(best_coin, 0.0), 4) if best_coin else 0,
-                            "worst_coin": worst_coin,
-                            "worst_coin_pnl": round(result.coin_pnl.get(worst_coin, 0.0), 4) if worst_coin else 0,
-                        }
-                    )
-                    suffix = (
-                        f"{days}d_{target_curve}_p{str(curve_param).replace('.', 'p')}"
-                        f"_m{str(multiplier).replace('.', 'p')}"
-                    )
-                    write_csv(out_dir / f"equity_curve_{suffix}.csv", result.equity_curve)
-                    write_csv(
-                        out_dir / f"trades_{suffix}.csv",
-                        [
+                for coin_weight_mode in coin_weight_modes:
+                    coin_weights = coin_weight_maps[coin_weight_mode]
+                    for multiplier in multipliers:
+                        result = simulate(
+                            requested_days=days,
+                            start=start,
+                            end=end,
+                            events=events,
+                            general_profiles=general_profiles,
+                            coin_profiles=coin_profiles,
+                            side_profiles=side_profiles,
+                            candles=candles,
+                            event_prices=event_prices,
+                            multiplier=multiplier,
+                            target_curve=target_curve,
+                            curve_param=curve_param,
+                            coin_weight_mode=coin_weight_mode,
+                            coin_weights=coin_weights,
+                            initial_equity=args.initial_equity,
+                            leverage=args.leverage,
+                            max_coin_margin_pct=args.max_coin_margin_pct,
+                            max_total_margin_pct=args.max_total_margin_pct,
+                            min_order_notional=args.min_order_notional,
+                            min_rebalance_notional=args.min_rebalance_notional,
+                            score_threshold=args.score_threshold,
+                            ignore_action_gate=args.ignore_action_gate,
+                            fee_bps=args.fee_bps,
+                            slippage_bps=args.slippage_bps,
+                            step=step,
+                        )
+                        all_results.append(result)
+                        best_coin = max(result.coin_pnl.items(), key=lambda x: x[1])[0] if result.coin_pnl else ""
+                        worst_coin = min(result.coin_pnl.items(), key=lambda x: x[1])[0] if result.coin_pnl else ""
+                        summary_rows.append(
                             {
-                                "time": x.time.isoformat(),
-                                "coin": x.coin,
-                                "old_notional": round(x.old_notional, 6),
-                                "target_notional": round(x.target_notional, 6),
-                                "delta_notional": round(x.delta_notional, 6),
-                                "price": round(x.price, 8),
-                                "realized_pnl": round(x.realized_pnl, 6),
-                                "cost": round(x.cost, 6),
-                                "equity_after": round(x.equity_after, 6),
+                                "requested_days": days,
+                                "simulated_days": round(result.simulated_days, 4),
+                                "coverage_limited": "yes" if result.simulated_days < days - 0.05 else "no",
+                                "target_curve": result.target_curve,
+                                "curve_param": round(result.curve_param, 6),
+                                "coin_weight_mode": result.coin_weight_mode,
+                                "multiplier": result.multiplier,
+                                "initial_equity": round(result.initial_equity, 4),
+                                "final_equity": round(result.final_equity, 4),
+                                "pnl_usd": round(result.pnl_usd, 4),
+                                "pnl_pct": round(result.pnl_pct, 4),
+                                "max_drawdown_pct": round(result.max_drawdown_pct, 4),
+                                "trade_count": len(result.trades),
+                                "fees_slippage_usd": round(result.fees_and_slippage, 4),
+                                "below_min_target_count": result.below_min_target_count,
+                                "missing_price_count": result.missing_price_count,
+                                "consensus_points": result.consensus_points,
+                                "best_coin": best_coin,
+                                "best_coin_pnl": round(result.coin_pnl.get(best_coin, 0.0), 4) if best_coin else 0,
+                                "worst_coin": worst_coin,
+                                "worst_coin_pnl": round(result.coin_pnl.get(worst_coin, 0.0), 4) if worst_coin else 0,
                             }
-                            for x in result.trades
-                        ],
-                    )
-                    write_csv(
-                        out_dir / f"coin_pnl_{suffix}.csv",
-                        [
-                            {
-                                "coin": coin,
-                                "pnl_usd": round(pnl, 6),
-                                "turnover_usd": round(result.coin_turnover.get(coin, 0.0), 6),
-                            }
-                            for coin, pnl in sorted(result.coin_pnl.items(), key=lambda x: x[1], reverse=True)
-                        ],
-                    )
-                    print(
-                        f"{days}d {target_curve} p={curve_param} m={multiplier}: "
-                        f"final=${result.final_equity:.2f} pnl={result.pnl_pct:+.2f}% "
-                        f"trades={len(result.trades)} dd={result.max_drawdown_pct:.2f}%",
-                        flush=True,
-                    )
+                        )
+                        suffix = (
+                            f"{days}d_{target_curve}_p{str(curve_param).replace('.', 'p')}"
+                            f"_{coin_weight_mode}_m{str(multiplier).replace('.', 'p')}"
+                        )
+                        write_csv(out_dir / f"equity_curve_{suffix}.csv", result.equity_curve)
+                        write_csv(
+                            out_dir / f"trades_{suffix}.csv",
+                            [
+                                {
+                                    "time": x.time.isoformat(),
+                                    "coin": x.coin,
+                                    "old_notional": round(x.old_notional, 6),
+                                    "target_notional": round(x.target_notional, 6),
+                                    "delta_notional": round(x.delta_notional, 6),
+                                    "price": round(x.price, 8),
+                                    "realized_pnl": round(x.realized_pnl, 6),
+                                    "cost": round(x.cost, 6),
+                                    "equity_after": round(x.equity_after, 6),
+                                }
+                                for x in result.trades
+                            ],
+                        )
+                        write_csv(
+                            out_dir / f"coin_pnl_{suffix}.csv",
+                            [
+                                {
+                                    "coin": coin,
+                                    "pnl_usd": round(pnl, 6),
+                                    "turnover_usd": round(result.coin_turnover.get(coin, 0.0), 6),
+                                }
+                                for coin, pnl in sorted(result.coin_pnl.items(), key=lambda x: x[1], reverse=True)
+                            ],
+                        )
+                        print(
+                            f"{days}d {target_curve} p={curve_param} weights={coin_weight_mode} m={multiplier}: "
+                            f"final=${result.final_equity:.2f} pnl={result.pnl_pct:+.2f}% "
+                            f"trades={len(result.trades)} dd={result.max_drawdown_pct:.2f}%",
+                            flush=True,
+                        )
 
     write_csv(out_dir / "summary.csv", sorted(summary_rows, key=lambda x: (x["requested_days"], -float(x["pnl_usd"]))))
     best = max(summary_rows, key=lambda x: float(x["pnl_usd"])) if summary_rows else None
@@ -1251,6 +1329,10 @@ def run_backtest(args: argparse.Namespace) -> Path:
         "coverage_days": coverage_days,
         "best": best,
         "parameters": vars(args),
+        "coin_weight_samples": {
+            mode: {coin: weights.get(coin) for coin in ["BTC", "ETH", "SOL", "HYPE", "BNB", "NEAR", "XPL", "GRASS"]}
+            for mode, weights in coin_weight_maps.items()
+        },
     }
     (out_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     write_report(out_dir, metadata, summary_rows)
@@ -1273,12 +1355,14 @@ def write_report(out_dir: Path, metadata: dict[str, Any], summary_rows: list[dic
         "",
         "## Best Runs",
         "",
-        "| Requested | Simulated | Multiplier | Final | PnL | PnL % | Max DD % | Trades | Best coin | Worst coin |",
-        "|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
+        "| Requested | Simulated | Curve | Coin weights | Multiplier | Final | PnL | PnL % | Max DD % | Trades | Best coin | Worst coin |",
+        "|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---|---|",
     ]
     for row in sorted_rows[:12]:
         lines.append(
-            f"| {row['requested_days']} | {row['simulated_days']} | {row['multiplier']} | "
+            f"| {row['requested_days']} | {row['simulated_days']} | "
+            f"{row.get('target_curve', 'linear')} p={row.get('curve_param', 1)} | "
+            f"{row.get('coin_weight_mode', 'flat')} | {row['multiplier']} | "
             f"${row['final_equity']} | ${row['pnl_usd']} | {row['pnl_pct']}% | "
             f"{row['max_drawdown_pct']}% | {row['trade_count']} | "
             f"{row['best_coin']} ${row['best_coin_pnl']} | {row['worst_coin']} ${row['worst_coin_pnl']} |"
@@ -1317,6 +1401,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-curves", default="linear")
     parser.add_argument("--curve-params", default="1")
     parser.add_argument("--linear-single-param", action="store_true")
+    parser.add_argument("--coin-weight-modes", default="flat")
     parser.add_argument("--initial-equity", type=float, default=100.0)
     parser.add_argument("--leverage", type=float, default=10.0)
     parser.add_argument("--max-coin-margin-pct", type=float, default=0.15)
