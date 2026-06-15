@@ -29,7 +29,18 @@ public static class EnvFileLoader
         ["ADMIN_PASSWORD"] = "Auth__AdminPassword",
         ["TELEGRAM_BOT_TOKEN"] = "Telegram__BotToken",
         ["TELEGRAM_CHAT_ID"] = "Telegram__ChatId",
-        ["TELEGRAM_ENABLED"] = "Telegram__Enabled"
+        ["TELEGRAM_ENABLED"] = "Telegram__Enabled",
+        ["HL_CONSENSUS_EXECUTION_ENABLED"] = "HyperliquidConsensusExecution__Enabled",
+        ["HL_CONSENSUS_TICK_SECONDS"] = "HyperliquidConsensusExecution__TickSeconds",
+        ["HL_CONSENSUS_THRESHOLD"] = "HyperliquidConsensusExecution__Threshold",
+        ["HL_CONSENSUS_MULTIPLIER"] = "HyperliquidConsensusExecution__Multiplier",
+        ["HL_CONSENSUS_MIN_ORDER_NOTIONAL_USD"] = "HyperliquidConsensusExecution__MinOrderNotionalUsd",
+        ["HL_CONSENSUS_MIN_REBALANCE_NOTIONAL_USD"] = "HyperliquidConsensusExecution__MinRebalanceNotionalUsd",
+        ["HL_CONSENSUS_LEVERAGE"] = "HyperliquidConsensusExecution__Leverage",
+        ["HL_CONSENSUS_MARGIN_MODE"] = "HyperliquidConsensusExecution__MarginMode",
+        ["HL_CONSENSUS_MAX_COIN_MARGIN_PCT"] = "HyperliquidConsensusExecution__MaxCoinMarginPct",
+        ["HL_CONSENSUS_MAX_TOTAL_MARGIN_PCT"] = "HyperliquidConsensusExecution__MaxTotalMarginPct",
+        ["HL_CONSENSUS_COIN_WEIGHT_MODE"] = "HyperliquidConsensusExecution__CoinWeightMode"
     };
 
     public static void LoadNearest(string startDirectory)
