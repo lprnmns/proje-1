@@ -154,6 +154,8 @@ class SimResult:
     requested_days: int
     simulated_days: float
     multiplier: float
+    target_curve: str
+    curve_param: float
     initial_equity: float
     final_equity: float
     pnl_usd: float
@@ -811,9 +813,49 @@ def rebalance_position(
     return cash, realized, cost, old_notional, delta_notional
 
 
+def response_target_notional(
+    score: float,
+    *,
+    threshold: float,
+    multiplier: float,
+    target_curve: str,
+    curve_param: float,
+) -> float:
+    abs_score = abs(score)
+    direction = sign(score)
+    if direction == 0 or abs_score < threshold:
+        return 0.0
+
+    curve = target_curve.lower().strip()
+    param = max(curve_param, 1e-9)
+
+    if curve == "linear":
+        magnitude = abs_score * multiplier
+    elif curve == "excess_linear":
+        magnitude = (abs_score - threshold) * multiplier
+    elif curve == "log":
+        # Concave: threshold starts at threshold*multiplier, stronger signals grow slower than linear.
+        magnitude = threshold * multiplier * (1.0 + math.log1p((abs_score - threshold) / param))
+    elif curve == "power":
+        # Convex: a 25->30 score move is intentionally larger than a 15->20 move.
+        magnitude = threshold * multiplier * ((abs_score / threshold) ** param)
+    elif curve == "excess_power":
+        # Convex above the gate, but starts near zero at the threshold.
+        magnitude = multiplier * ((abs_score - threshold) ** param) / (threshold ** max(param - 1.0, 0.0))
+    elif curve == "sqrt":
+        # Mildly concave above the gate.
+        magnitude = threshold * multiplier + multiplier * math.sqrt(max(abs_score - threshold, 0.0)) * math.sqrt(threshold)
+    else:
+        raise ValueError(f"Unsupported target curve: {target_curve}")
+
+    return direction * magnitude
+
+
 def target_notionals(
     consensus: dict[str, ConsensusSnapshot],
     multiplier: float,
+    target_curve: str,
+    curve_param: float,
     equity: float,
     leverage: float,
     max_coin_margin_pct: float,
@@ -830,7 +872,13 @@ def target_notionals(
         action_allowed = ignore_action_gate or snapshot.action in {"OPEN_LONG", "OPEN_SHORT"}
         if not action_allowed or abs(snapshot.direction_score) < score_threshold:
             continue
-        raw_target = snapshot.direction_score * multiplier
+        raw_target = response_target_notional(
+            snapshot.direction_score,
+            threshold=score_threshold,
+            multiplier=multiplier,
+            target_curve=target_curve,
+            curve_param=curve_param,
+        )
         raw_target = clamp(raw_target, -max_coin_notional, max_coin_notional)
         if abs(raw_target) < min_order_notional:
             result.below_min_target_count += 1
@@ -856,6 +904,8 @@ def simulate(
     candles: dict[str, list[tuple[datetime, float]]],
     event_prices: dict[str, list[tuple[datetime, float]]],
     multiplier: float,
+    target_curve: str,
+    curve_param: float,
     initial_equity: float,
     leverage: float,
     max_coin_margin_pct: float,
@@ -872,6 +922,8 @@ def simulate(
         requested_days=requested_days,
         simulated_days=(end - start).total_seconds() / 86_400.0,
         multiplier=multiplier,
+        target_curve=target_curve,
+        curve_param=curve_param,
         initial_equity=initial_equity,
         final_equity=initial_equity,
         pnl_usd=0.0,
@@ -919,6 +971,8 @@ def simulate(
         targets = target_notionals(
             consensus,
             multiplier,
+            target_curve,
+            curve_param,
             equity,
             leverage,
             max_coin_margin_pct,
@@ -1049,6 +1103,8 @@ def run_backtest(args: argparse.Namespace) -> Path:
     coverage_days = (max_time - min_time).total_seconds() / 86_400.0
     requested_days = [int(x.strip()) for x in str(args.days).split(",") if x.strip()]
     multipliers = [float(x.strip()) for x in str(args.multipliers).split(",") if x.strip()]
+    target_curves = [str(x.strip()) for x in str(args.target_curves).split(",") if x.strip()]
+    curve_params = [float(x.strip()) for x in str(args.curve_params).split(",") if x.strip()]
     step = timedelta(minutes=args.step_minutes)
     candle_start = min_time - timedelta(hours=2)
     candle_end = max_time + timedelta(hours=2)
@@ -1075,90 +1131,101 @@ def run_backtest(args: argparse.Namespace) -> Path:
         simulated_days = (end - start).total_seconds() / 86_400.0
         if simulated_days <= 0:
             continue
-        for multiplier in multipliers:
-            result = simulate(
-                requested_days=days,
-                start=start,
-                end=end,
-                events=events,
-                general_profiles=general_profiles,
-                coin_profiles=coin_profiles,
-                side_profiles=side_profiles,
-                candles=candles,
-                event_prices=event_prices,
-                multiplier=multiplier,
-                initial_equity=args.initial_equity,
-                leverage=args.leverage,
-                max_coin_margin_pct=args.max_coin_margin_pct,
-                max_total_margin_pct=args.max_total_margin_pct,
-                min_order_notional=args.min_order_notional,
-                min_rebalance_notional=args.min_rebalance_notional,
-                score_threshold=args.score_threshold,
-                ignore_action_gate=args.ignore_action_gate,
-                fee_bps=args.fee_bps,
-                slippage_bps=args.slippage_bps,
-                step=step,
-            )
-            all_results.append(result)
-            best_coin = max(result.coin_pnl.items(), key=lambda x: x[1])[0] if result.coin_pnl else ""
-            worst_coin = min(result.coin_pnl.items(), key=lambda x: x[1])[0] if result.coin_pnl else ""
-            summary_rows.append(
-                {
-                    "requested_days": days,
-                    "simulated_days": round(result.simulated_days, 4),
-                    "coverage_limited": "yes" if result.simulated_days < days - 0.05 else "no",
-                    "multiplier": result.multiplier,
-                    "initial_equity": round(result.initial_equity, 4),
-                    "final_equity": round(result.final_equity, 4),
-                    "pnl_usd": round(result.pnl_usd, 4),
-                    "pnl_pct": round(result.pnl_pct, 4),
-                    "max_drawdown_pct": round(result.max_drawdown_pct, 4),
-                    "trade_count": len(result.trades),
-                    "fees_slippage_usd": round(result.fees_and_slippage, 4),
-                    "below_min_target_count": result.below_min_target_count,
-                    "missing_price_count": result.missing_price_count,
-                    "consensus_points": result.consensus_points,
-                    "best_coin": best_coin,
-                    "best_coin_pnl": round(result.coin_pnl.get(best_coin, 0.0), 4) if best_coin else 0,
-                    "worst_coin": worst_coin,
-                    "worst_coin_pnl": round(result.coin_pnl.get(worst_coin, 0.0), 4) if worst_coin else 0,
-                }
-            )
-            suffix = f"{days}d_m{str(multiplier).replace('.', 'p')}"
-            write_csv(out_dir / f"equity_curve_{suffix}.csv", result.equity_curve)
-            write_csv(
-                out_dir / f"trades_{suffix}.csv",
-                [
-                    {
-                        "time": x.time.isoformat(),
-                        "coin": x.coin,
-                        "old_notional": round(x.old_notional, 6),
-                        "target_notional": round(x.target_notional, 6),
-                        "delta_notional": round(x.delta_notional, 6),
-                        "price": round(x.price, 8),
-                        "realized_pnl": round(x.realized_pnl, 6),
-                        "cost": round(x.cost, 6),
-                        "equity_after": round(x.equity_after, 6),
-                    }
-                    for x in result.trades
-                ],
-            )
-            write_csv(
-                out_dir / f"coin_pnl_{suffix}.csv",
-                [
-                    {
-                        "coin": coin,
-                        "pnl_usd": round(pnl, 6),
-                        "turnover_usd": round(result.coin_turnover.get(coin, 0.0), 6),
-                    }
-                    for coin, pnl in sorted(result.coin_pnl.items(), key=lambda x: x[1], reverse=True)
-                ],
-            )
-            print(
-                f"{days}d m={multiplier}: final=${result.final_equity:.2f} "
-                f"pnl={result.pnl_pct:+.2f}% trades={len(result.trades)} dd={result.max_drawdown_pct:.2f}%",
-                flush=True,
-            )
+        for target_curve in target_curves:
+            params_for_curve = [1.0] if target_curve == "linear" and args.linear_single_param else curve_params
+            for curve_param in params_for_curve:
+                for multiplier in multipliers:
+                    result = simulate(
+                        requested_days=days,
+                        start=start,
+                        end=end,
+                        events=events,
+                        general_profiles=general_profiles,
+                        coin_profiles=coin_profiles,
+                        side_profiles=side_profiles,
+                        candles=candles,
+                        event_prices=event_prices,
+                        multiplier=multiplier,
+                        target_curve=target_curve,
+                        curve_param=curve_param,
+                        initial_equity=args.initial_equity,
+                        leverage=args.leverage,
+                        max_coin_margin_pct=args.max_coin_margin_pct,
+                        max_total_margin_pct=args.max_total_margin_pct,
+                        min_order_notional=args.min_order_notional,
+                        min_rebalance_notional=args.min_rebalance_notional,
+                        score_threshold=args.score_threshold,
+                        ignore_action_gate=args.ignore_action_gate,
+                        fee_bps=args.fee_bps,
+                        slippage_bps=args.slippage_bps,
+                        step=step,
+                    )
+                    all_results.append(result)
+                    best_coin = max(result.coin_pnl.items(), key=lambda x: x[1])[0] if result.coin_pnl else ""
+                    worst_coin = min(result.coin_pnl.items(), key=lambda x: x[1])[0] if result.coin_pnl else ""
+                    summary_rows.append(
+                        {
+                            "requested_days": days,
+                            "simulated_days": round(result.simulated_days, 4),
+                            "coverage_limited": "yes" if result.simulated_days < days - 0.05 else "no",
+                            "target_curve": result.target_curve,
+                            "curve_param": round(result.curve_param, 6),
+                            "multiplier": result.multiplier,
+                            "initial_equity": round(result.initial_equity, 4),
+                            "final_equity": round(result.final_equity, 4),
+                            "pnl_usd": round(result.pnl_usd, 4),
+                            "pnl_pct": round(result.pnl_pct, 4),
+                            "max_drawdown_pct": round(result.max_drawdown_pct, 4),
+                            "trade_count": len(result.trades),
+                            "fees_slippage_usd": round(result.fees_and_slippage, 4),
+                            "below_min_target_count": result.below_min_target_count,
+                            "missing_price_count": result.missing_price_count,
+                            "consensus_points": result.consensus_points,
+                            "best_coin": best_coin,
+                            "best_coin_pnl": round(result.coin_pnl.get(best_coin, 0.0), 4) if best_coin else 0,
+                            "worst_coin": worst_coin,
+                            "worst_coin_pnl": round(result.coin_pnl.get(worst_coin, 0.0), 4) if worst_coin else 0,
+                        }
+                    )
+                    suffix = (
+                        f"{days}d_{target_curve}_p{str(curve_param).replace('.', 'p')}"
+                        f"_m{str(multiplier).replace('.', 'p')}"
+                    )
+                    write_csv(out_dir / f"equity_curve_{suffix}.csv", result.equity_curve)
+                    write_csv(
+                        out_dir / f"trades_{suffix}.csv",
+                        [
+                            {
+                                "time": x.time.isoformat(),
+                                "coin": x.coin,
+                                "old_notional": round(x.old_notional, 6),
+                                "target_notional": round(x.target_notional, 6),
+                                "delta_notional": round(x.delta_notional, 6),
+                                "price": round(x.price, 8),
+                                "realized_pnl": round(x.realized_pnl, 6),
+                                "cost": round(x.cost, 6),
+                                "equity_after": round(x.equity_after, 6),
+                            }
+                            for x in result.trades
+                        ],
+                    )
+                    write_csv(
+                        out_dir / f"coin_pnl_{suffix}.csv",
+                        [
+                            {
+                                "coin": coin,
+                                "pnl_usd": round(pnl, 6),
+                                "turnover_usd": round(result.coin_turnover.get(coin, 0.0), 6),
+                            }
+                            for coin, pnl in sorted(result.coin_pnl.items(), key=lambda x: x[1], reverse=True)
+                        ],
+                    )
+                    print(
+                        f"{days}d {target_curve} p={curve_param} m={multiplier}: "
+                        f"final=${result.final_equity:.2f} pnl={result.pnl_pct:+.2f}% "
+                        f"trades={len(result.trades)} dd={result.max_drawdown_pct:.2f}%",
+                        flush=True,
+                    )
 
     write_csv(out_dir / "summary.csv", sorted(summary_rows, key=lambda x: (x["requested_days"], -float(x["pnl_usd"]))))
     best = max(summary_rows, key=lambda x: float(x["pnl_usd"])) if summary_rows else None
@@ -1247,6 +1314,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-traders", type=int, default=40)
     parser.add_argument("--days", default="30,60,90")
     parser.add_argument("--multipliers", default="0.1,0.2,0.35,0.5,0.75,1,1.5,2,3")
+    parser.add_argument("--target-curves", default="linear")
+    parser.add_argument("--curve-params", default="1")
+    parser.add_argument("--linear-single-param", action="store_true")
     parser.add_argument("--initial-equity", type=float, default=100.0)
     parser.add_argument("--leverage", type=float, default=10.0)
     parser.add_argument("--max-coin-margin-pct", type=float, default=0.15)
