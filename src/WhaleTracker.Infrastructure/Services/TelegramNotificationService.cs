@@ -28,7 +28,8 @@ public class TelegramNotificationService : INotificationService
         if (!_settings.Enabled ||
             string.IsNullOrWhiteSpace(_settings.BotToken) ||
             string.IsNullOrWhiteSpace(_settings.ChatId) ||
-            DateTime.UtcNow < _mutedUntilUtc)
+            DateTime.UtcNow < _mutedUntilUtc ||
+            !IsAllowedNotification(title))
         {
             return;
         }
@@ -63,6 +64,10 @@ public class TelegramNotificationService : INotificationService
             _logger.LogWarning(ex, "Telegram notification could not be sent.");
         }
     }
+
+    private static bool IsAllowedNotification(string title) =>
+        title.StartsWith("Consensus threshold", StringComparison.OrdinalIgnoreCase) ||
+        title.StartsWith("WhaleTracker login", StringComparison.OrdinalIgnoreCase);
 
     private static string Escape(string value)
     {
