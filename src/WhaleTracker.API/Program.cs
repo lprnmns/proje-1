@@ -190,6 +190,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<MissionControlHub>("/hubs/mission-control");
+app.MapFallbackToFile("index.html");
 
 // ================================================================
 // BAŞLANGIÇ MESAJI
