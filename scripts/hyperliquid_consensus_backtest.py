@@ -926,15 +926,40 @@ def target_notionals(
     min_order_notional: float,
     score_threshold: float,
     ignore_action_gate: bool,
+    allocation_mode: str,
+    equal_active_base_fill: float,
+    equal_active_power: float,
     result: SimResult,
 ) -> dict[str, float]:
     max_coin_notional = max(equity, 0.0) * leverage * max_coin_margin_pct
     max_total_notional = max(equity, 0.0) * leverage * max_total_margin_pct
     targets: dict[str, float] = {}
+    eligible: list[tuple[str, ConsensusSnapshot]] = []
     for coin, snapshot in consensus.items():
         action_allowed = ignore_action_gate or snapshot.action in {"OPEN_LONG", "OPEN_SHORT"}
         if not action_allowed or abs(snapshot.direction_score) < score_threshold:
             continue
+        eligible.append((coin, snapshot))
+
+    if allocation_mode == "equal_active_score_fill" and eligible:
+        per_coin_capacity = max_total_notional / len(eligible) if max_total_notional > 0 else 0.0
+        for coin, snapshot in eligible:
+            direction = sign(snapshot.direction_score)
+            score_span = max(100.0 - score_threshold, 1e-9)
+            normalized_strength = clamp((abs(snapshot.direction_score) - score_threshold) / score_span, 0.0, 1.0)
+            fill = clamp(
+                equal_active_base_fill + (1.0 - equal_active_base_fill) * (normalized_strength ** max(equal_active_power, 1e-9)),
+                0.0,
+                1.0,
+            )
+            raw_target = direction * per_coin_capacity * fill
+            if abs(raw_target) < min_order_notional:
+                result.below_min_target_count += 1
+                continue
+            targets[coin] = raw_target
+        return targets
+
+    for coin, snapshot in eligible:
         raw_target = response_target_notional(
             snapshot.direction_score,
             threshold=score_threshold,
@@ -980,6 +1005,9 @@ def simulate(
     min_rebalance_notional: float,
     score_threshold: float,
     ignore_action_gate: bool,
+    allocation_mode: str,
+    equal_active_base_fill: float,
+    equal_active_power: float,
     fee_bps: float,
     slippage_bps: float,
     step: timedelta,
@@ -1048,6 +1076,9 @@ def simulate(
             min_order_notional,
             score_threshold,
             ignore_action_gate,
+            allocation_mode,
+            equal_active_base_fill,
+            equal_active_power,
             result,
         )
 
@@ -1233,6 +1264,9 @@ def run_backtest(args: argparse.Namespace) -> Path:
                             min_rebalance_notional=args.min_rebalance_notional,
                             score_threshold=args.score_threshold,
                             ignore_action_gate=args.ignore_action_gate,
+                            allocation_mode=args.allocation_mode,
+                            equal_active_base_fill=args.equal_active_base_fill,
+                            equal_active_power=args.equal_active_power,
                             fee_bps=args.fee_bps,
                             slippage_bps=args.slippage_bps,
                             step=step,
@@ -1249,6 +1283,9 @@ def run_backtest(args: argparse.Namespace) -> Path:
                                 "curve_param": round(result.curve_param, 6),
                                 "coin_weight_mode": result.coin_weight_mode,
                                 "multiplier": result.multiplier,
+                                "allocation_mode": args.allocation_mode,
+                                "equal_active_base_fill": round(args.equal_active_base_fill, 6),
+                                "equal_active_power": round(args.equal_active_power, 6),
                                 "initial_equity": round(result.initial_equity, 4),
                                 "final_equity": round(result.final_equity, 4),
                                 "pnl_usd": round(result.pnl_usd, 4),
@@ -1409,6 +1446,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-order-notional", type=float, default=10.0)
     parser.add_argument("--min-rebalance-notional", type=float, default=8.0)
     parser.add_argument("--score-threshold", type=float, default=25.0)
+    parser.add_argument(
+        "--allocation-mode",
+        choices=["score_notional", "equal_active_score_fill"],
+        default="score_notional",
+        help="score_notional uses score*multiplier; equal_active_score_fill splits gross capacity across active coins.",
+    )
+    parser.add_argument("--equal-active-base-fill", type=float, default=0.10)
+    parser.add_argument("--equal-active-power", type=float, default=0.5)
     parser.add_argument(
         "--ignore-action-gate",
         action="store_true",
