@@ -820,13 +820,15 @@ def target_notionals(
     max_total_margin_pct: float,
     min_order_notional: float,
     score_threshold: float,
+    ignore_action_gate: bool,
     result: SimResult,
 ) -> dict[str, float]:
     max_coin_notional = max(equity, 0.0) * leverage * max_coin_margin_pct
     max_total_notional = max(equity, 0.0) * leverage * max_total_margin_pct
     targets: dict[str, float] = {}
     for coin, snapshot in consensus.items():
-        if snapshot.action not in {"OPEN_LONG", "OPEN_SHORT"} or abs(snapshot.direction_score) < score_threshold:
+        action_allowed = ignore_action_gate or snapshot.action in {"OPEN_LONG", "OPEN_SHORT"}
+        if not action_allowed or abs(snapshot.direction_score) < score_threshold:
             continue
         raw_target = snapshot.direction_score * multiplier
         raw_target = clamp(raw_target, -max_coin_notional, max_coin_notional)
@@ -861,6 +863,7 @@ def simulate(
     min_order_notional: float,
     min_rebalance_notional: float,
     score_threshold: float,
+    ignore_action_gate: bool,
     fee_bps: float,
     slippage_bps: float,
     step: timedelta,
@@ -922,6 +925,7 @@ def simulate(
             max_total_margin_pct,
             min_order_notional,
             score_threshold,
+            ignore_action_gate,
             result,
         )
 
@@ -1090,6 +1094,7 @@ def run_backtest(args: argparse.Namespace) -> Path:
                 min_order_notional=args.min_order_notional,
                 min_rebalance_notional=args.min_rebalance_notional,
                 score_threshold=args.score_threshold,
+                ignore_action_gate=args.ignore_action_gate,
                 fee_bps=args.fee_bps,
                 slippage_bps=args.slippage_bps,
                 step=step,
@@ -1249,6 +1254,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-order-notional", type=float, default=10.0)
     parser.add_argument("--min-rebalance-notional", type=float, default=8.0)
     parser.add_argument("--score-threshold", type=float, default=25.0)
+    parser.add_argument(
+        "--ignore-action-gate",
+        action="store_true",
+        help="Ignore the built-in consensus action gate and use --score-threshold directly.",
+    )
     parser.add_argument("--fee-bps", type=float, default=5.0)
     parser.add_argument("--slippage-bps", type=float, default=3.0)
     parser.add_argument("--step-minutes", type=int, default=60)
